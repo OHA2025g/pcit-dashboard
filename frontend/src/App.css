@@ -1,0 +1,11 @@
+.recharts-text {
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+
+.recharts-cartesian-axis-tick-value {
+  fill: #475569;
+}
+
+.recharts-default-tooltip {
+  border-radius: 0.25rem !important;
+}

@@ -1,0 +1,101 @@
+"""Leadership report: snapshot -> PDF (reportlab) and fixed HTML email template."""
+import io
+from html import escape
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+
+TITLES = {
+    "conviction": "Conviction",
+    "timeliness": "Charge Sheet Timeliness",
+    "emergency112": "112 Performance",
+    "training": "Training Performance",
+}
+RATE = {
+    "conviction": "Conviction rate",
+    "timeliness": "Within-time rate",
+    "emergency112": "% closed ≤100m",
+    "training": "% people trained",
+}
+f2 = lambda v: "-" if v is None else f"{v:.2f}"  # noqa: E731
+
+
+def _slim(r):
+    return {k: r.get(k) for k in ("rank", "unit", "range", "base_rate", "latest_rate", "improvement", "overall_score", "category")}
+
+
+def build_section(domain, type_, base, latest, rows, tot):
+    scored = sorted([r for r in rows if r["rank"]], key=lambda r: r["rank"])
+    improvers = sorted([r for r in rows if r["improvement"] is not None], key=lambda r: -r["improvement"])[:5]
+    return {"domain": domain, "type": type_, "base": base, "latest": latest,
+            "totals": {k: tot.get(k) for k in ("base_rate", "latest_rate", "improvement", "avg_overall_score", "unit_count", "scored_count")},
+            "top": [_slim(r) for r in scored[:10]], "bottom": [_slim(r) for r in scored[-5:][::-1]],
+            "improvers": [_slim(r) for r in improvers]}
+
+
+def _table(head, body, widths):
+    t = Table([head] + body, colWidths=widths, repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F172A")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 8), ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F4F6FA")]),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E2E8F0")), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    return t
+
+
+def render_pdf(report: dict) -> bytes:
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=14 * mm, rightMargin=14 * mm, topMargin=14 * mm, bottomMargin=14 * mm)
+    ss = getSampleStyleSheet()
+    els = [Paragraph("Police Performance Dashboard - Leadership Report", ss["Title"]),
+           Paragraph(f"{escape(report['title'])} | generated {report['created_at'][:16].replace('T', ' ')} UTC | scoring policy v{report.get('policy_version', '-')}", ss["Normal"]),
+           Spacer(1, 8)]
+    for s in report["sections"]:
+        t = s["totals"]
+        els += [Paragraph(f"{TITLES[s['domain']]} - {escape(s['type'])} ({escape(s['base'])} to {escape(s['latest'])})", ss["Heading2"]),
+                _table(["Base rate %", "Latest rate %", "Improvement (pp)", "Avg overall score", "Units scored"],
+                       [[f2(t["base_rate"]), f2(t["latest_rate"]), f2(t["improvement"]), f2(t["avg_overall_score"]), f"{t['scored_count']} / {t['unit_count']}"]],
+                       [36 * mm] * 5), Spacer(1, 6)]
+        rank_head = ["Rank", "Unit", "Range", "Base %", "Latest %", "Imp. pp", "Overall", "Category"]
+        rw = [12 * mm, 40 * mm, 34 * mm, 16 * mm, 16 * mm, 16 * mm, 16 * mm, 30 * mm]
+        row = lambda r: [r["rank"] or "-", r["unit"], r["range"], f2(r["base_rate"]), f2(r["latest_rate"]), f2(r["improvement"]), f2(r["overall_score"]), r["category"]]  # noqa: E731
+        for label, key in (("Top 10 units", "top"), ("Biggest improvers", "improvers"), ("Bottom 5 units", "bottom")):
+            els += [Paragraph(label, ss["Heading4"]), _table(rank_head, [row(r) for r in s[key]], rw), Spacer(1, 4)]
+        els.append(Spacer(1, 10))
+    els.append(Paragraph("Overall score = weighted performance score (latest rate vs statewide min/max) + improvement score. Confidential - for authorised police leadership only.", ss["Italic"]))
+    doc.build(els)
+    return buf.getvalue()
+
+
+def render_email(report: dict, app_url: str) -> tuple[str, str]:
+    subject = f"Police Performance Dashboard - {report['title']}"
+    blocks = []
+    for s in report["sections"]:
+        t = s["totals"]
+        top = "".join(f"<li>#{r['rank']} {escape(r['unit'])} - {f2(r['overall_score'])}</li>" for r in s["top"][:3])
+        imp = "".join(f"<li>{escape(r['unit'])}: +{f2(r['improvement'])} pp</li>" if (r["improvement"] or 0) >= 0
+                      else f"<li>{escape(r['unit'])}: {f2(r['improvement'])} pp</li>" for r in s["improvers"][:3])
+        blocks.append(
+            f'<tr><td style="padding:16px 24px;border-top:1px solid #E2E8F0">'
+            f'<div style="font-size:16px;font-weight:bold;color:#0F172A">{TITLES[s["domain"]]}</div>'
+            f'<div style="font-size:12px;color:#64748B">{escape(s["type"])} | {escape(s["base"])} to {escape(s["latest"])}</div>'
+            f'<p style="font-size:14px;margin:8px 0">{RATE[s["domain"]]}: <b>{f2(t["base_rate"])}% to {f2(t["latest_rate"])}%</b> ({f2(t["improvement"])} pp)</p>'
+            f'<div style="font-size:13px"><b>Top units</b><ul style="margin:4px 0 8px">{top}</ul><b>Biggest improvers</b><ul style="margin:4px 0">{imp}</ul></div>'
+            f'</td></tr>')
+    html = (
+        '<table role="presentation" width="100%" style="font-family:Arial,sans-serif;max-width:640px;border:1px solid #E2E8F0">'
+        '<tr><td style="background:#0F172A;color:#FFFFFF;padding:20px 24px">'
+        '<div style="font-size:11px;letter-spacing:2px;color:#F59E0B">LEADERSHIP REPORT</div>'
+        f'<div style="font-size:20px;font-weight:bold">{escape(report["title"])}</div></td></tr>'
+        + "".join(blocks) +
+        f'<tr><td style="padding:16px 24px;border-top:1px solid #E2E8F0;font-size:13px">'
+        f'The full PDF with top 10, bottom 5 and improvers is available after signing in: '
+        f'<a href="{escape(app_url)}/reports" style="color:#1E3A8A">open the Reports page</a>.</td></tr>'
+        '<tr><td style="padding:12px 24px;font-size:11px;color:#888">Sent by Police Performance Dashboard. '
+        'You receive this because an administrator added you to the leadership report list. '
+        'We never ask for your password by email.</td></tr></table>')
+    return subject, html
