@@ -1,11 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import axios from "axios";
-import { useLocalAuth } from "@/components/auth/ClerkAuthProvider";
+import { useAuth } from "@/components/auth/AuthProvider";
 
 export const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export function useApi() {
-  const { getToken } = useLocalAuth();
+  const { getToken } = useAuth();
   return useCallback(
     async (method, path, { params, data, headers, responseType } = {}) => {
       const token = await getToken();

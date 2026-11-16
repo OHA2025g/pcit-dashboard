@@ -4,10 +4,10 @@
 "The details to create the dashboard is attached in the document and excel, create dashboarding platform using it" — BRD PDF (Police Performance Dashboard) + Conviction_Final Dashboard_v3.xlsm + 60_90_Final Dashboard_v3.xlsm.
 
 ## User choices
-Email+password login (Emergent-managed Clerk); roles Admin / State viewer / Range viewer (new users = pending); ADMIN_EMAIL=aghoreshwar@hotmail.com; seed from workbooks + admin uploads newer versions; extras: per-unit step explanation, CSV/XLSX/PDF export, editable scoring rules, audit log, provision for API data sources.
+Email+password login (self-hosted JWT in auth.py); roles Admin / State viewer / Range viewer (new users = pending); ADMIN_EMAIL=aghoreshwar@hotmail.com; seed from workbooks + admin uploads newer versions; extras: per-unit step explanation, CSV/XLSX/PDF export, editable scoring rules, audit log, provision for API data sources.
 
 ## Architecture
-FastAPI + MongoDB (datasets, facts, policy, policy_versions, users, audit, api_sources) · React + recharts + shadcn · Clerk auth (clerk_auth.py). scoring.py = KPI engine (replicates Excel formulas, sums counts before rates); workbook.py = macro-free XLSM "Source Data" parser.
+FastAPI + MongoDB (datasets, facts, policy, policy_versions, users, audit, api_sources) · React + recharts + shadcn · self-hosted auth (auth.py). scoring.py = KPI engine (replicates Excel formulas, sums counts before rates); workbook.py = macro-free XLSM "Source Data" parser.
 
 ## Implemented (2026-06)
 - Overview (both domains: KPIs, top/bottom 5, category distribution, range comparison)

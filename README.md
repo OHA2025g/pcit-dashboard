@@ -2,21 +2,21 @@
 
 React (frontend) + FastAPI (backend) + MongoDB. The two historical workbooks in `backend/seed/` are loaded automatically on first start.
 
-## 1. Before you start: set up sign-in (Clerk, free)
-The hosted version uses Emergent-managed sign-in. Locally you need your own Clerk application:
-1. Create a free account at https://dashboard.clerk.com → **Create application** → enable **Email** + **Password**.
-2. Copy the **Publishable key** (`pk_test_…`) and **Secret key** (`sk_test_…`) from **API Keys**.
-3. `cp backend/.env.example backend/.env` and paste both keys into `CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY`.
+## 1. Before you start: set up sign-in
+The app uses self-hosted email + password login (JWT sessions stored in the browser).
+1. `cp backend/.env.example backend/.env`
+2. Set `AUTH_JWT_SECRET` to a long random string (16+ characters).
+3. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` — on first start the backend creates that admin account if none exists.
 4. Set `WEBHOOK_CRON_SECRET` to any long random string.
 
-The email in `ADMIN_EMAIL` becomes admin automatically after it signs up and verifies its address. All other users start as *Pending approval* until the admin assigns a role.
+Anyone can register at `/sign-up`. The `ADMIN_EMAIL` address gets the **admin** role; all other new users start as *Pending approval* until an admin assigns a role.
 
 ## 2a. Easiest: Docker (one command)
 Requires Docker Desktop.
 ```bash
 docker compose up --build -d
 ```
-Open http://localhost:3000. To stop it, run `docker compose down`. Data is kept in the `mongo_data` volume.
+Open http://localhost:8200 and sign in. To stop it, run `docker compose down`. Data is kept in the `mongo_data` volume.
 
 ## 2b. Without Docker (developer mode)
 Requires Python 3.11+, Node 20+, Yarn 1.x, and MongoDB 6+ running on `localhost:27017`.
@@ -48,14 +48,14 @@ For developer mode, pass the backend URL as the second argument: `./run_cron.sh 
 Report emails use Emergent's managed email service (`EMERGENT_EMAIL_KEY`), which is only available on the Emergent platform. Locally, reports are still created and downloadable as PDF from the **Reports** page. The email deliveries show as *failed* until a key is configured. To send email from your own server, replace `send_email` in `backend/emailer.py` with your own email provider (SMTP, Resend, SES, etc.).
 
 ## 5. Hosting on your own server
-- Run the Docker setup on a Linux VM and put HTTPS in front of port 3000 (e.g. Caddy or nginx with Let's Encrypt).
-- In Clerk, create a **production** instance for your domain and use its `pk_live_`/`sk_live_` keys. With live keys the app sends Clerk traffic through `https://<your-domain>/api/__clerk`. In the Clerk dashboard, go to **Domains → Proxy** and set the proxy URL to that address. Alternatively, add the DNS records Clerk lists.
+- Run the Docker setup on a Linux VM and put HTTPS in front of port 8200 (e.g. Caddy or nginx with Let's Encrypt).
+- Use a strong unique `AUTH_JWT_SECRET` and `ADMIN_PASSWORD` in production; never commit real secrets.
 - Back up the `mongo_data` volume regularly (`mongodump`).
 
 ## Project layout
 ```
 backend/   server.py (API), scoring.py (KPI engine), workbook.py (Excel import),
-           reports.py (PDF), emailer.py, clerk_auth.py, seed/*.xlsm
+           reports.py (PDF), emailer.py, auth.py, seed/*.xlsm
 frontend/  src/pages (Overview, dashboards, Trends, Reports, Approvals, Admin), src/components
 ```
 See `PRD.md` for the full feature list.

@@ -1,10 +1,11 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { UserButton } from "@clerk/react";
-import { ShieldCheck, LayoutGrid, Scale, Timer, PhoneCall, GraduationCap, Settings2, Loader2, Clock, LineChart, Stamp, Mail } from "lucide-react";
+import { ShieldCheck, LayoutGrid, Scale, Timer, PhoneCall, GraduationCap, Settings2, Loader2, Clock, LineChart, Stamp, Mail, LogOut } from "lucide-react";
 import { useMe } from "@/lib/api";
-import { useLocalAuth } from "@/components/auth/ClerkAuthProvider";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { ROLE_LABELS } from "@/lib/format";
+import { LOGOUT } from "@/constants/testIds/auth";
+import { Button } from "@/components/ui/button";
 
 const NAV = [
   { to: "/", label: "Overview", icon: LayoutGrid, end: true, id: "nav-overview" },
@@ -28,7 +29,14 @@ const PendingScreen = ({ me }) => (
 
 export default function AppShell() {
   const { me, error } = useMe();
-  const { localMode } = useLocalAuth();
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  const onLogout = async () => {
+    await logout();
+    navigate("/sign-in", { replace: true });
+  };
+
   return (
     <div className="min-h-screen">
       <header className="bg-slate-950 text-white sticky top-0 z-50 border-b border-slate-800/80 relative overflow-hidden" data-testid="app-header">
@@ -75,13 +83,22 @@ export default function AppShell() {
                 {ROLE_LABELS[me.role]}{me.range ? ` · ${me.range}` : ""}
               </span>
             )}
-            {localMode ? (
-              <span className="text-xs text-slate-400 border border-slate-700 px-2.5 py-1 rounded-sm" data-testid="local-user-badge">
-                Local admin
+            {me && (
+              <span className="hidden sm:inline text-xs text-slate-400 max-w-[160px] truncate" data-testid="user-email" title={me.email}>
+                {me.email}
               </span>
-            ) : (
-              <UserButton />
             )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onLogout}
+              className="h-8 px-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-sm"
+              data-testid={LOGOUT.button}
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="ml-1.5 hidden md:inline">Sign out</span>
+            </Button>
           </div>
         </div>
       </header>

@@ -27,7 +27,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 try:
-    from backend.clerk_auth import clerk_router, require_user, is_clerk_configured
+    from backend.auth import auth_router, bind_auth, bootstrap_admin, require_user
     from backend.scoring import (
         DOMAINS, DEFAULT_POLICY, CATEGORIES, categories_for, score_units, totals, explain, enrich, combine,
         combined_weights,
@@ -36,9 +36,9 @@ try:
     from backend.emailer import send_email
     from backend.reports import build_section, render_pdf, render_email
 except ModuleNotFoundError:
+    from auth import auth_router, bind_auth, bootstrap_admin, require_user
     from emailer import send_email
     from reports import build_section, render_pdf, render_email
-    from clerk_auth import clerk_router, require_user, is_clerk_configured
     from scoring import (
         DOMAINS, DEFAULT_POLICY, CATEGORIES, categories_for, score_units, totals, explain, enrich, combine,
         combined_weights,
@@ -51,7 +51,10 @@ db = client[os.environ['DB_NAME']]
 logger = logging.getLogger(__name__)
 
 INDEXES: dict[str, list[IndexModel]] = {
-    "users": [IndexModel([("user_id", ASCENDING)], name="user_id", unique=True)],
+    "users": [
+        IndexModel([("user_id", ASCENDING)], name="user_id", unique=True),
+        IndexModel([("email", ASCENDING)], name="email", unique=True),
+    ],
     "datasets": [IndexModel([("id", ASCENDING)], name="id", unique=True),
                  IndexModel([("domain", ASCENDING), ("active", ASCENDING)], name="domain_active")],
     "facts": [IndexModel([("dataset_id", ASCENDING)], name="dataset_id")],
@@ -86,27 +89,13 @@ ROLES = ["admin", "approver", "state_viewer", "range_viewer", "pending"]
 DEFAULT_ROLE = "pending"
 RETIRED_ROLES = {}
 RANK = {r: len(ROLES) - i for i, r in enumerate(ROLES)}
-ENV = "live" if os.environ.get("CLERK_PUBLISHABLE_KEY", "").startswith("pk_live_") else "preview"
+ENV = os.environ.get("APP_ENV", "live").strip() or "live"
 IN_ENV = {"env": {"$in": [ENV, None]}}
 
 
 def effective_role(role) -> str:
     role = RETIRED_ROLES.get(role, role)
     return role if role in ROLES else DEFAULT_ROLE
-
-
-def _clerk_profile(user_id: str) -> dict:
-    admins = {e.strip().lower() for e in os.environ.get("ADMIN_EMAIL", "").split(",") if e.strip()}
-    r = requests.get(f"https://api.clerk.com/v1/users/{user_id}", timeout=10,
-                     headers={"Authorization": f"Bearer {os.environ['CLERK_SECRET_KEY']}", "User-Agent": "emergent-app"})
-    r.raise_for_status()
-    data = r.json()
-    emails = data.get("email_addresses", [])
-    primary = next((e["email_address"] for e in emails if e["id"] == data.get("primary_email_address_id")),
-                   emails[0]["email_address"] if emails else "")
-    is_admin = any(e["email_address"].lower() in admins and (e.get("verification") or {}).get("status") == "verified" for e in emails)
-    name = " ".join(x for x in [data.get("first_name"), data.get("last_name")] if x)
-    return {"email": primary, "name": name, "is_admin": is_admin}
 
 
 async def audit(action: str, member: Optional[dict], detail: dict = None, session_id: str = None):
@@ -120,20 +109,12 @@ async def audit(action: str, member: Optional[dict], detail: dict = None, sessio
 
 async def current_member(user: dict = Depends(require_user)) -> dict:
     uid = user["user_id"]
-    member = await db.users.find_one({"user_id": uid}, {"_id": 0})
-    if member is None or not member.get("role"):
-        if not is_clerk_configured() or uid == "local-admin":
-            admin_email = (os.environ.get("ADMIN_EMAIL") or "admin@localhost").split(",")[0].strip()
-            prof = {"email": admin_email, "name": "Local Admin", "is_admin": True}
-        else:
-            prof = await run_in_threadpool(_clerk_profile, uid)
-        role = "admin" if prof["is_admin"] else DEFAULT_ROLE
-        await db.users.update_one({"user_id": uid, "role": {"$in": [None, ""]}}, {"$set": {"role": role}})
-        member = await db.users.find_one_and_update(
-            {"user_id": uid},
-            {"$setOnInsert": {"user_id": uid, "role": role, "range": None, "created_at": now_iso()},
-             "$set": {"email": prof["email"], "name": prof["name"]}},
-            upsert=True, projection={"_id": 0}, return_document=ReturnDocument.AFTER)
+    member = await db.users.find_one({"user_id": uid}, {"_id": 0, "password_hash": 0})
+    if member is None:
+        raise HTTPException(status_code=401, detail="Account not found")
+    if not member.get("role"):
+        await db.users.update_one({"user_id": uid}, {"$set": {"role": DEFAULT_ROLE}})
+        member = {**member, "role": DEFAULT_ROLE}
     if member.get("env") != ENV:
         await db.users.update_one({"user_id": uid}, {"$set": {"env": ENV}})
     member = {**member, "env": ENV, "role": effective_role(member["role"])}
@@ -571,7 +552,7 @@ async def withdraw_proposal(pid: str, member: dict = Depends(admin_only)):
 # ---------- Users (admin) ----------
 @api_router.get("/users")
 async def list_users(member: dict = Depends(admin_only)):
-    people = await db.users.find(IN_ENV, {"_id": 0}).to_list(1000)
+    people = await db.users.find(IN_ENV, {"_id": 0, "password_hash": 0}).to_list(1000)
     ranges = set()
     for d in DOMAINS:
         with suppress(HTTPException):
@@ -990,8 +971,9 @@ async def cron_monthly_report(request: Request, background: BackgroundTasks):
     return {"accepted": True, "duplicate": run_id is None}
 
 
+bind_auth(db=db, env=ENV, default_role=DEFAULT_ROLE, now_iso=now_iso, audit=audit)
 app.include_router(api_router)
-app.include_router(clerk_router)
+app.include_router(auth_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1028,6 +1010,9 @@ async def startup():
     app.state.index_task = asyncio.create_task(ensure_indexes())
     for old, new in RETIRED_ROLES.items():
         await db.users.update_many({"role": old}, {"$set": {"role": new}})
+    admin_id = await bootstrap_admin()
+    if admin_id:
+        logger.info("Bootstrapped admin account %s", admin_id)
     await seed_datasets()
 
 

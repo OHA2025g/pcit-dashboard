@@ -8,6 +8,7 @@ pydantic==2.14.3
 requests==2.34.2
 urllib3==2.8.0
 PyJWT==2.15.1
+bcrypt==4.2.1
 cryptography==50.0.2
 openpyxl==3.1.5
 python-multipart==0.0.33

@@ -1,12 +1,13 @@
 import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { MotionConfig } from "framer-motion";
-import { Show, SignIn, SignUp } from "@clerk/react";
-import ClerkAuthProvider, { useLocalAuth } from "@/components/auth/ClerkAuthProvider";
+import AuthProvider, { useAuth } from "@/components/auth/AuthProvider";
 import { MeProvider } from "@/lib/api";
 import { Toaster } from "@/components/ui/sonner";
 import AppShell from "@/components/AppShell";
 import AuthLayout from "@/pages/AuthLayout";
+import SignInPage from "@/pages/SignInPage";
+import SignUpPage from "@/pages/SignUpPage";
 import Overview from "@/pages/Overview";
 import DomainDashboard from "@/pages/DomainDashboard";
 import AdminPage from "@/pages/admin/AdminPage";
@@ -15,23 +16,18 @@ import ReportsPage from "@/pages/ReportsPage";
 import ApprovalsPage from "@/pages/ApprovalsPage";
 
 const Protected = () => {
-  const { localMode } = useLocalAuth();
-  if (localMode) {
-    return <MeProvider><AppShell /></MeProvider>;
-  }
+  const { isAuthenticated } = useAuth();
+  if (!isAuthenticated) return <Navigate to="/sign-in" replace />;
   return (
-    <>
-      <Show when="signed-in">
-        <MeProvider><AppShell /></MeProvider>
-      </Show>
-      <Show when="signed-out"><Navigate to="/sign-in" replace /></Show>
-    </>
+    <MeProvider>
+      <AppShell />
+    </MeProvider>
   );
 };
 
 const AuthRoute = ({ children }) => {
-  const { localMode } = useLocalAuth();
-  if (localMode) return <Navigate to="/" replace />;
+  const { isAuthenticated } = useAuth();
+  if (isAuthenticated) return <Navigate to="/" replace />;
   return children;
 };
 
@@ -40,10 +36,10 @@ function App() {
     <MotionConfig reducedMotion="user">
       <div className="App page-grain">
         <BrowserRouter>
-          <ClerkAuthProvider>
+          <AuthProvider>
             <Routes>
-              <Route path="/sign-in/*" element={<AuthRoute><AuthLayout><SignIn routing="path" path="/sign-in" signUpUrl="/sign-up" withSignUp /></AuthLayout></AuthRoute>} />
-              <Route path="/sign-up/*" element={<AuthRoute><AuthLayout><SignUp routing="path" path="/sign-up" signInUrl="/sign-in" /></AuthLayout></AuthRoute>} />
+              <Route path="/sign-in" element={<AuthRoute><AuthLayout><SignInPage /></AuthLayout></AuthRoute>} />
+              <Route path="/sign-up" element={<AuthRoute><AuthLayout><SignUpPage /></AuthLayout></AuthRoute>} />
               <Route path="/" element={<Protected />}>
                 <Route index element={<Overview />} />
                 <Route path="conviction" element={<DomainDashboard key="conviction" domain="conviction" />} />
@@ -58,7 +54,7 @@ function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             <Toaster position="top-right" />
-          </ClerkAuthProvider>
+          </AuthProvider>
         </BrowserRouter>
       </div>
     </MotionConfig>
