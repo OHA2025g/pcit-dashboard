@@ -45,7 +45,9 @@ export default function AuthProvider({ children }) {
 
   const register = useCallback(async ({ email, password, name }) => {
     const { data } = await axios.post(`${AUTH_API}/register`, { email, password, name });
-    persist(data.access_token);
+    // Only auto-sign-in when the account is already approved (e.g. ADMIN_EMAIL).
+    if (data.access_token) persist(data.access_token);
+    else persist(null);
     return data;
   }, [persist]);
 

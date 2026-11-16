@@ -153,6 +153,10 @@ def auth_config():
     return {"enabled": True, "local_mode": False, "provider": "local"}
 
 
+def _is_approved(role: str) -> bool:
+    return role not in (None, "", _default_role, "pending")
+
+
 @auth_router.post("/register")
 async def register(body: RegisterIn):
     email = _validate_email(body.email)
@@ -175,6 +179,16 @@ async def register(body: RegisterIn):
     await _db.users.insert_one(doc)
     if _audit:
         await _audit("register", {"user_id": user_id, "email": email, "role": role}, {"role": role})
+    # Pending accounts must wait for admin approval before they can sign in.
+    if not _is_approved(role):
+        return {
+            "status": "pending_approval",
+            "message": "Registration received. An administrator must approve your account before you can sign in.",
+            "user_id": user_id,
+            "email": email,
+            "name": name,
+            "role": role,
+        }
     return await _token_response(doc)
 
 
@@ -184,6 +198,11 @@ async def login(body: LoginIn):
     user = await _db.users.find_one({"email": email}, {"_id": 0})
     if not user or not user.get("password_hash") or not verify_password(body.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not _is_approved(user.get("role")):
+        raise HTTPException(
+            status_code=403,
+            detail="Your account is awaiting administrator approval. You can sign in after an admin assigns your role.",
+        )
     return await _token_response(user)
 
 

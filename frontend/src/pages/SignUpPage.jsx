@@ -14,6 +14,7 @@ export default function SignUpPage() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
+  const [done, setDone] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const onSubmit = async (e) => {
@@ -29,8 +30,12 @@ export default function SignUpPage() {
     }
     setBusy(true);
     try {
-      await register({ email, password, name });
-      navigate("/", { replace: true });
+      const data = await register({ email, password, name });
+      if (data.access_token) {
+        navigate("/", { replace: true });
+        return;
+      }
+      setDone(data.message || "Registration received. Wait for administrator approval before signing in.");
     } catch (err) {
       setError(err?.response?.data?.detail || err?.message || "Registration failed");
     } finally {
@@ -38,11 +43,27 @@ export default function SignUpPage() {
     }
   };
 
+  if (done) {
+    return (
+      <div className="w-full max-w-sm space-y-5" data-testid="sign-up-pending">
+        <div>
+          <h1 className="font-display text-2xl font-semibold text-slate-900">Awaiting approval</h1>
+          <p className="text-sm text-slate-600 mt-3 leading-relaxed">{done}</p>
+        </div>
+        <Button asChild className="w-full rounded-sm" data-testid="sign-up-go-sign-in">
+          <Link to="/sign-in">Go to sign in</Link>
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={onSubmit} className="w-full max-w-sm space-y-5" data-testid="sign-up-form">
       <div>
         <h1 className="font-display text-2xl font-semibold text-slate-900">Create account</h1>
-        <p className="text-sm text-slate-500 mt-1">New accounts await administrator approval before data access.</p>
+        <p className="text-sm text-slate-500 mt-1">
+          After you register, an administrator must approve your account before you can sign in.
+        </p>
       </div>
       {error && (
         <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 px-3 py-2 rounded-sm" data-testid="sign-up-error">
@@ -101,7 +122,7 @@ export default function SignUpPage() {
         />
       </div>
       <Button type="submit" disabled={busy} className="w-full rounded-sm" data-testid={REGISTER.submitButton}>
-        {busy ? "Creating account…" : "Register"}
+        {busy ? "Submitting…" : "Register"}
       </Button>
       <p className="text-sm text-slate-500 text-center">
         Already have an account?{" "}

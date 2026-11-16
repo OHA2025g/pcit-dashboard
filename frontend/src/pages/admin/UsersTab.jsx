@@ -19,7 +19,7 @@ export default function UsersTab() {
   };
 
   return (
-    <Panel title="Users & roles" subtitle="New sign-ups wait as 'Pending approval' until you assign a role. Range viewers see only their range's units.">
+    <Panel title="Users & roles" subtitle="New registrations stay Pending and cannot sign in until you assign a role. Range viewers see only their range's units.">
       <div className="overflow-x-auto -mx-5 -mb-5">
         <table className="w-full text-sm" data-testid="users-table">
           <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500"><tr>{["User", "Role", "Range scope", "Joined"].map((h) => <th key={h} className="text-left px-4 py-2.5">{h}</th>)}</tr></thead>
