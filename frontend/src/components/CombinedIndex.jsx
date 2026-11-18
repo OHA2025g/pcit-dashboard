@@ -11,6 +11,7 @@ const COLS = [
   { key: "timeliness_score", label: "Timeliness score" }, { key: "timeliness_rank", label: "Tim. rank" },
   { key: "emergency112_score", label: "112 score" }, { key: "emergency112_rank", label: "112 rank" },
   { key: "training_score", label: "Training score" }, { key: "training_rank", label: "Train. rank" },
+  { key: "antf_score", label: "ANTF marks" }, { key: "antf_rank", label: "ANTF rank" },
   { key: "combined_score", label: "Combined index" }, { key: "category", label: "Category" },
 ];
 
@@ -20,7 +21,8 @@ function weightLabel(weight) {
     const t = Math.round((weight.timeliness ?? 0) * 100);
     const e = Math.round((weight.emergency112 ?? 0) * 100);
     const tr = Math.round((weight.training ?? 0) * 100);
-    return `${c}% conviction · ${t}% timeliness · ${e}% 112 · ${tr}% training`;
+    const a = Math.round((weight.antf ?? 0) * 100);
+    return `${c}% conviction · ${t}% timeliness · ${e}% 112 · ${tr}% training · ${a}% ANTF`;
   }
   const w = Math.round((weight ?? 0.5) * 100);
   return `${w}% conviction / ${100 - w}% other`;
@@ -32,7 +34,7 @@ export default function CombinedIndex() {
   const [all, setAll] = useState(false);
   useEffect(() => { api("get", "/combined").then(setData).catch(() => setData({ rows: [], error: true })); }, [api]);
   if (!data) return <div className="flex items-center gap-2 text-slate-500 py-6"><Loader2 className="h-4 w-4 animate-spin" />Loading combined index…</div>;
-  if (data.error) return <div className="text-sm text-rose-700" data-testid="combined-error">Combined index is unavailable: conviction, timeliness, 112, and training datasets must all be active.</div>;
+  if (data.error) return <div className="text-sm text-rose-700" data-testid="combined-error">Combined index is unavailable: conviction, timeliness, 112, training, and ANTF datasets must all be active.</div>;
   const rows = [...data.rows].sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
   const label = weightLabel(data.weight);
   const win = data.windows || {};
@@ -46,7 +48,7 @@ export default function CombinedIndex() {
           <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500"><tr>{COLS.map((c) => <th key={c.key} className="text-left px-3 py-2 whitespace-nowrap">{c.label}</th>)}</tr></thead>
           <tbody>
             {shown.map((r) => (
-              <tr key={r.unit} className="border-t border-slate-100 hover:bg-amber-50/50" data-testid={`combined-row-${slug(r.unit)}`}>
+              <tr key={r.unit} className="border-t border-slate-100 hover:bg-teal-50/50" data-testid={`combined-row-${slug(r.unit)}`}>
                 <td className="px-3 py-2 font-num font-bold">{r.rank ?? "—"}</td>
                 <td className="px-3 py-2 font-medium whitespace-nowrap">{r.unit}</td>
                 <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{r.range}</td>
@@ -58,10 +60,12 @@ export default function CombinedIndex() {
                 <td className="px-3 py-2 font-num text-slate-500">{r.emergency112_rank ?? "—"}</td>
                 <td className="px-3 py-2 font-num">{fmt(r.training_score)}</td>
                 <td className="px-3 py-2 font-num text-slate-500">{r.training_rank ?? "—"}</td>
+                <td className="px-3 py-2 font-num">{fmt(r.antf_score)}</td>
+                <td className="px-3 py-2 font-num text-slate-500">{r.antf_rank ?? "—"}</td>
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-2">
-                    <div className="h-1.5 w-20 bg-slate-100 rounded-sm overflow-hidden"><div className="h-full bg-blue-900" style={{ width: `${Math.max(0, r.combined_score || 0)}%` }} /></div>
-                    <span className="font-num font-bold text-blue-900">{fmt(r.combined_score)}</span>
+                    <div className="h-1.5 w-20 bg-slate-100 rounded-sm overflow-hidden"><div className="h-full bg-brand-navy" style={{ width: `${Math.max(0, r.combined_score || 0)}%` }} /></div>
+                    <span className="font-num font-bold text-brand-navy">{fmt(r.combined_score)}</span>
                   </div>
                 </td>
                 <td className="px-3 py-2"><CategoryBadge value={r.category} /></td>
@@ -71,7 +75,7 @@ export default function CombinedIndex() {
         </table>
       </div>
       {rows.length > 10 && (
-        <button onClick={() => setAll(!all)} className="mt-3 text-sm text-blue-900 hover:text-amber-700 font-medium" data-testid="combined-toggle-all">
+        <button onClick={() => setAll(!all)} className="mt-3 text-sm text-brand-navy hover:text-teal-700 font-medium" data-testid="combined-toggle-all">
           {all ? "Show top 10 only" : `Show all ${rows.length} units`}
         </button>
       )}

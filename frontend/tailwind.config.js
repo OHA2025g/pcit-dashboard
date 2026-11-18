@@ -51,6 +51,8 @@ module.exports = {
         brand: {
           navy: 'hsl(var(--brand-navy))',
           amber: 'hsl(var(--brand-amber))',
+          accent: 'hsl(var(--brand-accent))',
+          chrome: 'hsl(var(--brand-chrome))',
         },
         chart: {
           '1': 'hsl(var(--chart-1))',

@@ -46,6 +46,7 @@ function App() {
                 <Route path="timeliness" element={<DomainDashboard key="timeliness" domain="timeliness" />} />
                 <Route path="112" element={<DomainDashboard key="emergency112" domain="emergency112" />} />
                 <Route path="training" element={<DomainDashboard key="training" domain="training" />} />
+                <Route path="antf" element={<DomainDashboard key="antf" domain="antf" />} />
                 <Route path="admin" element={<AdminPage />} />
                 <Route path="trends" element={<TrendsPage />} />
                 <Route path="reports" element={<ReportsPage />} />

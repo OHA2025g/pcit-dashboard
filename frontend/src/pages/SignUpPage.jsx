@@ -126,7 +126,7 @@ export default function SignUpPage() {
       </Button>
       <p className="text-sm text-slate-500 text-center">
         Already have an account?{" "}
-        <Link to="/sign-in" className="text-blue-800 hover:underline font-medium" data-testid={REGISTER.loginLink}>
+        <Link to="/sign-in" className="text-brand-navy hover:underline font-medium" data-testid={REGISTER.loginLink}>
           Sign in
         </Link>
       </p>

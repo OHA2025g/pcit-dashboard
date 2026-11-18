@@ -58,13 +58,13 @@ export const Kpi = ({ label, value, sub, accent, testId, formula }) => (
             type="button"
             data-testid={testId ? `${testId}-info` : undefined}
             aria-label={`How ${label} is calculated`}
-            className="absolute top-2 right-2 z-10 h-6 w-6 inline-flex items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-500 hover:text-blue-900 hover:border-amber-400 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 transition-colors"
+            className="absolute top-2 right-2 z-10 h-6 w-6 inline-flex items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-500 hover:text-brand-navy hover:border-teal-600 hover:bg-teal-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600/50 transition-colors"
           >
             <Info className="h-3.5 w-3.5" strokeWidth={2.25} />
           </button>
         </PopoverTrigger>
         <PopoverContent align="end" side="bottom" className="w-80 p-3.5 rounded-sm border-slate-200 shadow-lg bg-white surface-panel">
-          <div className="text-[10px] uppercase tracking-[0.14em] font-semibold text-amber-700">How it’s calculated</div>
+          <div className="text-[10px] uppercase tracking-[0.14em] font-semibold text-teal-700">How it’s calculated</div>
           <div className="text-sm font-semibold text-slate-900 mt-1 leading-snug">{label}</div>
           {typeof formula === "string" ? (
             <p className="text-xs text-slate-600 mt-2 leading-relaxed whitespace-pre-wrap">{formula}</p>

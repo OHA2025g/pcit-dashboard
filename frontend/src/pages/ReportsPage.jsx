@@ -44,7 +44,7 @@ const Settings = ({ settings, onSaved }) => {
       <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1.5">Recipients (one per line)</div>
       <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} className="rounded-sm font-num text-sm" data-testid="report-recipients-input" />
       <div className="flex flex-wrap gap-2 mt-3">
-        <Button className="rounded-sm bg-blue-900 hover:bg-blue-800" onClick={save} data-testid="report-settings-save"><Save className="h-4 w-4 mr-1.5" />Save</Button>
+        <Button className="rounded-sm bg-brand-navy hover:bg-brand-navy/90" onClick={save} data-testid="report-settings-save"><Save className="h-4 w-4 mr-1.5" />Save</Button>
         <Button variant="outline" className="rounded-sm" onClick={sendNow} disabled={sending} data-testid="report-send-now">{sending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Send className="h-4 w-4 mr-1.5" />}Send report now</Button>
       </div>
       <p className="text-[11px] text-slate-500 mt-3">The email has headline rates, top units and biggest improvers for both areas, plus a link to download the full PDF here after signing in.</p>
@@ -75,7 +75,7 @@ export default function ReportsPage() {
   return (
     <div className="space-y-5" data-testid="reports-page">
       <div>
-        <div className="text-[11px] uppercase tracking-[0.2em] text-amber-700 font-semibold">Leadership reports</div>
+        <div className="text-[11px] uppercase tracking-[0.2em] text-teal-700 font-semibold">Leadership reports</div>
         <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 mt-1">Monthly performance reports</h1>
       </div>
       <div className={`grid grid-cols-1 ${me.role === "admin" ? "lg:grid-cols-[380px_1fr]" : ""} gap-5`}>

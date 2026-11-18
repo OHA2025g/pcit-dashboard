@@ -43,7 +43,7 @@ export default function SourcesTab() {
           <Input placeholder="Source name (e.g. CCTNS aggregate feed)" value={form.name} onChange={set("name")} className="rounded-sm" data-testid="source-name-input" />
           <Input placeholder="https://source.example.gov/api/conviction" value={form.url} onChange={set("url")} className="rounded-sm" data-testid="source-url-input" />
           <select value={form.domain} onChange={set("domain")} className="w-full h-9 border rounded-sm px-2 text-sm bg-white" data-testid="source-domain-select">
-            <option value="conviction">Conviction</option><option value="timeliness">Charge Sheet Timeliness</option><option value="emergency112">112 Performance</option><option value="training">Training Performance</option>
+            <option value="conviction">Conviction</option><option value="timeliness">Charge Sheet Timeliness</option><option value="emergency112">112 Performance</option><option value="training">Training Performance</option><option value="antf">ANTF Meetings</option>
           </select>
           <select value={form.schedule} onChange={set("schedule")} className="w-full h-9 border rounded-sm px-2 text-sm bg-white" data-testid="source-schedule-select">
             <option value="daily">Sync automatically every day (6:00 IST)</option><option value="manual">Manual sync only</option>
@@ -52,10 +52,10 @@ export default function SourcesTab() {
             <Input placeholder="Auth header (optional)" value={form.auth_header} onChange={set("auth_header")} className="rounded-sm" data-testid="source-auth-header-input" />
             <Input type="password" placeholder="Header value" value={form.auth_value} onChange={set("auth_value")} className="rounded-sm" data-testid="source-auth-value-input" />
           </div>
-          <Button className="rounded-sm bg-blue-900 hover:bg-blue-800 w-full" onClick={create} disabled={!form.name || !form.url} data-testid="source-save-btn"><Plug className="h-4 w-4 mr-1.5" />Save source</Button>
+          <Button className="rounded-sm bg-brand-navy hover:bg-brand-navy/90 w-full" onClick={create} disabled={!form.name || !form.url} data-testid="source-save-btn"><Plug className="h-4 w-4 mr-1.5" />Save source</Button>
         </div>
         <div className="mt-5 text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1.5">Expected response format</div>
-        <pre className="text-[11px] bg-slate-950 text-amber-200 p-3 rounded-sm overflow-x-auto font-num">{SAMPLE}</pre>
+        <pre className="text-[11px] bg-brand-chrome text-teal-200 p-3 rounded-sm overflow-x-auto font-num">{SAMPLE}</pre>
         <p className="text-[11px] text-slate-500 mt-2">denominator = trial / registered cases · numerator = convicted / within-time · beyond = beyond-time (timeliness only).</p>
       </Panel>
       <Panel title="Configured sources" subtitle={`${list.length} source(s)`}>

@@ -34,11 +34,11 @@ try:
     )
     from backend.workbook import parse_workbook, WorkbookError
     from backend.emailer import send_email
-    from backend.reports import build_section, render_pdf, render_email
+    from backend.reports import build_section, render_pdf, render_email, render_explain_email
 except ModuleNotFoundError:
     from auth import auth_router, bind_auth, bootstrap_admin, require_user
     from emailer import send_email
-    from reports import build_section, render_pdf, render_email
+    from reports import build_section, render_pdf, render_email, render_explain_email
     from scoring import (
         DOMAINS, DEFAULT_POLICY, CATEGORIES, categories_for, score_units, totals, explain, enrich, combine,
         combined_weights,
@@ -155,7 +155,7 @@ def _merge_policy(stored: dict | None) -> dict:
     if not stored:
         return policy
     for key, val in stored.items():
-        if key in ("conviction", "timeliness", "emergency112", "training") and isinstance(val, dict):
+        if key in ("conviction", "timeliness", "emergency112", "training", "antf") and isinstance(val, dict):
             policy[key] = {**policy.get(key, {}), **val}
         elif key == "combined_weights" and isinstance(val, dict):
             policy["combined_weights"] = {**policy.get("combined_weights", {}), **val}
@@ -226,7 +226,10 @@ async def compute(domain, type_, base, latest, member):
 
 
 def default_periods(ds):
-    return ds["periods"][-2], ds["periods"][-1]
+    periods = ds["periods"]
+    if len(periods) == 1:
+        return periods[0], periods[0]
+    return periods[-2], periods[-1]
 
 
 # ---------------- Endpoints ----------------
@@ -247,14 +250,16 @@ async def meta(domain: str, member: dict = Depends(viewer)):
     rng = scope_range(member)
     first = data[ds["types"][0]]["units"]
     units = [u for u, r in first if not rng or r == rng]
+    unit_set = set(units)
+    unit_ranges = {u: r for u, r in first if (not rng or r == rng) and u in unit_set}
     ranges = sorted({r for _, r in first if not rng or r == rng})
     b, l = default_periods(ds)
     cats = categories_for(domain)
-    if domain in ("emergency112", "training"):
+    if domain in ("emergency112", "training", "antf"):
         ranges = [r for r in ranges if r]
     return {"domain": domain, "labels": DOMAINS[domain], "types": ds["types"], "periods": ds["periods"],
-            "units": units, "ranges": ranges, "categories": cats, "default_base": b, "default_latest": l,
-            "scope_range": rng,
+            "units": units, "ranges": ranges, "unit_ranges": unit_ranges, "categories": cats,
+            "default_base": b, "default_latest": l, "scope_range": rng,
             "dataset": {k: ds[k] for k in ("id", "filename", "source", "uploaded_at", "uploaded_by", "record_count", "unit_count")}}
 
 
@@ -284,6 +289,39 @@ async def explain_unit(domain: str, type: str, base: str, latest: str, unit: str
     return {"row": row, "cohort": cohort, "steps": explain(domain, row, cohort, policy, type, base, latest)}
 
 
+class ExplainEmailIn(BaseModel):
+    domain: str
+    type: str
+    base: str
+    latest: str
+    unit: str
+    to: str
+
+
+@api_router.post("/explain/email")
+async def email_explain(body: ExplainEmailIn, member: dict = Depends(viewer)):
+    to = body.to.strip().lower()
+    if not EMAIL_RE.match(to):
+        raise HTTPException(status_code=422, detail="Enter a valid email address")
+    ds, policy, rows, cohort, _ = await compute(body.domain, body.type, body.base, body.latest, member)
+    row = next((r for r in rows if r["unit"] == body.unit), None)
+    if not row:
+        raise HTTPException(status_code=404, detail="Unit not found")
+    if not row.get("eligible"):
+        raise HTTPException(status_code=422, detail="Unit is not score-eligible: a period has zero cases.")
+    steps = explain(body.domain, row, cohort, policy, body.type, body.base, body.latest)
+    subject, html = render_explain_email(
+        domain=body.domain, type_=body.type, base=body.base, latest=body.latest,
+        unit=body.unit, row=row, steps=steps, sender=member.get("email") or "",
+    )
+    await send_email(to=to, subject=subject, html=html)
+    await audit("explain_emailed", member, {
+        "domain": body.domain, "unit": body.unit, "to": to,
+        "type": body.type, "base": body.base, "latest": body.latest, "steps": len(steps),
+    })
+    return {"ok": True, "to": to}
+
+
 @api_router.get("/overview")
 async def overview(member: dict = Depends(viewer)):
     out = {}
@@ -304,7 +342,7 @@ async def overview(member: dict = Depends(viewer)):
         scored = sorted([r for r in rows if r["rank"]], key=lambda r: r["rank"])
         cats = categories_for(domain)
         dist = {c: sum(1 for r in rows if r["category"] == c) for c in cats}
-        range_stats = [x for x in range_stats if x["range"] or domain not in ("emergency112", "training")]
+        range_stats = [x for x in range_stats if x["range"] or domain not in ("emergency112", "training", "antf")]
         out[domain] = {"type": type_, "base": b, "latest": l, "totals": totals(domain, rows),
                        "top": scored[:5], "bottom": scored[-5:][::-1], "distribution": dist,
                        "ranges": sorted(range_stats, key=lambda x: -(x["avg_overall_score"] or 0)),
@@ -326,14 +364,14 @@ async def combined(member: dict = Depends(viewer)):
         type_ = ds["types"][-1]
         rows, _ = score_units(domain, data[type_]["facts"], data[type_]["units"], b, l, policy)
         parts[domain] = {"rows": rows, "type": type_, "base": b, "latest": l}
-    needed = ("conviction", "timeliness", "emergency112", "training")
+    needed = ("conviction", "timeliness", "emergency112", "training", "antf")
     if any(d not in parts for d in needed):
         return {"error": "combined_requires_all_domains", "rows": [], "weight": combined_weights(policy),
                 "policy_version": policy.get("version"), "windows": {}}
     rows, w = combine(
         parts["conviction"]["rows"], parts["timeliness"]["rows"],
-        parts["emergency112"]["rows"], parts["training"]["rows"],
-        UNIT_MAP, UNIT_MAP_112, UNIT_MAP_TRAINING, policy,
+        parts["emergency112"]["rows"], parts["training"]["rows"], parts["antf"]["rows"],
+        UNIT_MAP, UNIT_MAP_112, UNIT_MAP_TRAINING, UNIT_MAP_ANTF, policy,
     )
     rng = scope_range(member)
     if rng:
@@ -421,6 +459,7 @@ class CombinedWeights(BaseModel):
     timeliness: float = Field(ge=0, le=1)
     emergency112: float = Field(ge=0, le=1)
     training: float = Field(ge=0, le=1)
+    antf: float = Field(ge=0, le=1)
 
 
 class RankingBand(BaseModel):
@@ -435,11 +474,19 @@ class TrainingPolicy(BaseModel):
     rank_default: str = "Low Performer"
 
 
+class AntfPolicy(BaseModel):
+    meeting_mark: float = 3
+    upload_mark: float = 2
+    rank_bands: List[RankBand]
+    rank_default: str = "Low Performer"
+
+
 class PolicyIn(BaseModel):
     conviction: DomainPolicy
     timeliness: DomainPolicy
     emergency112: DomainPolicy
     training: TrainingPolicy
+    antf: AntfPolicy
     rank_bands: List[RankBand]
     rank_default: str
     combined_weight: float = Field(default=0.5, ge=0, le=1)
@@ -477,6 +524,8 @@ async def update_policy(body: PolicyIn, member: dict = Depends(admin_only)):
             raise HTTPException(status_code=422, detail=f"{d}: improvement bands must be in ascending order")
     if not data["training"]["ranking_bands"]:
         raise HTTPException(status_code=422, detail="training: at least one ranking band is required")
+    if not data["antf"]["rank_bands"]:
+        raise HTTPException(status_code=422, detail="antf: at least one rank band is required")
     # Preserve Scale extras (time/pct weights, score categories) not edited in DomainPolicy form
     cur = await get_policy()
     for extra in ("time_weight", "pct_weight", "score_bands", "score_default"):
@@ -611,7 +660,7 @@ async def list_audit(action: str = "All", limit: int = Query(200, ge=1, le=1000)
 class SourceIn(BaseModel):
     name: str = Field(min_length=1)
     url: str = Field(pattern="^https?://")
-    domain: str = Field(pattern="^(conviction|timeliness|emergency112|training)$")
+    domain: str = Field(pattern="^(conviction|timeliness|emergency112|training|antf)$")
     auth_header: str = ""
     auth_value: str = ""
     schedule: str = Field(default="manual", pattern="^(manual|daily)$")
@@ -757,6 +806,15 @@ UNIT_MAP_TRAINING = {
     "Osmanabad": "Dharashiv", "Nanded": "Naded",
 }
 
+# Conviction unit → ANTF Meeting Conducted unit
+UNIT_MAP_ANTF = {
+    "Ahmednagar": "Ahilyanagar", "Amravati (C)": "Amravati", "Amravati (R)": "Amravati",
+    "Mumbai (C)": "Mumbai City", "Nagpur (C)": "Nagpur", "Nagpur (R)": "Nagpur",
+    "Nasik (C)": "Nashik", "Nasik (R)": "Nashik", "Pune (C)": "Pune", "Pune (R)": "Pune",
+    "Solapur (C)": "Solapur", "Solapur (R)": "Solapur", "Thane (C)": "Thane", "Thane (R)": "Thane",
+    "Aurangabad": "Aurangabad", "Osmanabad": "Osmanabad",
+}
+
 _MONTH_ORD = {m: i for i, m in enumerate(
     ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], 1)}
 
@@ -800,14 +858,14 @@ def _series_112(entry: dict, unit: Optional[str], periods: list, scope_units: li
 async def trend(unit: str, conv_type: str, tim_type: str, member: dict = Depends(viewer)):
     rng = scope_range(member)
     out, units_meta = {}, {}
-    for domain, type_ in (("conviction", conv_type), ("timeliness", tim_type), ("emergency112", "All"), ("training", "All")):
+    for domain, type_ in (("conviction", conv_type), ("timeliness", tim_type), ("emergency112", "All"), ("training", "All"), ("antf", "All")):
         try:
             ds = await active_dataset(domain)
         except HTTPException:
             continue
         data = await load_facts(ds)
         if type_ not in data:
-            if domain in ("emergency112", "training"):
+            if domain in ("emergency112", "training", "antf"):
                 continue
             raise HTTPException(status_code=400, detail=f"Unknown {domain} case type")
         entry = data[type_]
@@ -820,8 +878,10 @@ async def trend(unit: str, conv_type: str, tim_type: str, member: dict = Depends
             name = UNIT_MAP.get(unit, unit.upper())
         elif domain == "emergency112":
             name = UNIT_MAP_112.get(unit, unit)
-        else:
+        elif domain == "training":
             name = UNIT_MAP_TRAINING.get(unit, unit)
+        else:
+            name = UNIT_MAP_ANTF.get(unit, unit)
         matched = name if name in scope_units else next((u for u in scope_units if u.lower() == name.lower()), None)
         units_meta[domain] = matched
         if domain == "emergency112":
@@ -835,7 +895,7 @@ async def trend(unit: str, conv_type: str, tim_type: str, member: dict = Depends
     points = []
     for p in periods:
         pt = {"period": p}
-        for domain in ("conviction", "timeliness", "emergency112", "training"):
+        for domain in ("conviction", "timeliness", "emergency112", "training", "antf"):
             if domain not in out:
                 pt[domain] = None
                 pt[f"{domain}_benchmark"] = None
@@ -992,6 +1052,7 @@ async def seed_datasets():
         ("timeliness", "timeliness.xlsm", "timeliness_Final Dashboard_v3.xlsm"),
         ("emergency112", "emergency112.xlsm", "Dashboard 112_V2.xlsm"),
         ("training", "training.xlsm", "Training Data v2.xlsm"),
+        ("antf", "antf.xlsx", "ANTF Meetings Conducted Dashboard.xlsx"),
     )
     for domain, fname, label in seeds:
         if await db.datasets.count_documents({"domain": domain}):

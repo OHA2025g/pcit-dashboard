@@ -70,7 +70,7 @@ export default function SignInPage() {
       </Button>
       <p className="text-sm text-slate-500 text-center">
         No account?{" "}
-        <Link to="/sign-up" className="text-blue-800 hover:underline font-medium" data-testid={LOGIN.registerLink}>
+        <Link to="/sign-up" className="text-brand-navy hover:underline font-medium" data-testid={LOGIN.registerLink}>
           Register
         </Link>
       </p>

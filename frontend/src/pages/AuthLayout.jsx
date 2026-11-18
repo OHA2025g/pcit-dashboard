@@ -5,33 +5,33 @@ import { softScale, staggerContainer, fadeUp } from "@/lib/motion";
 export default function AuthLayout({ children }) {
   return (
     <div className="min-h-screen flex bg-background">
-      <aside className="hidden lg:flex relative w-[46%] bg-slate-950 text-white overflow-hidden" data-testid="auth-side-panel">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950" />
+      <aside className="hidden lg:flex relative w-[46%] bg-brand-chrome text-white overflow-hidden" data-testid="auth-side-panel">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0B1220] via-[#0E1A2B] to-[#0F3D5E]" />
         <div className="absolute inset-0 grid-texture grid-texture-animated opacity-70" />
-        <div className="absolute -top-24 -right-24 h-80 w-80 rounded-full bg-amber-500/10 blur-3xl" />
-        <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-slate-950 to-transparent" />
+        <div className="absolute -top-24 -right-24 h-80 w-80 rounded-full bg-teal-500/10 blur-3xl" />
+        <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-brand-chrome to-transparent" />
         <div className="relative z-10 flex flex-col justify-between p-14 w-full">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-sm bg-amber-500 flex items-center justify-center brand-tick shadow-lg shadow-amber-500/25">
-              <ShieldCheck className="h-6 w-6 text-slate-950" />
+            <div className="h-10 w-10 rounded-sm bg-teal-600 flex items-center justify-center brand-tick">
+              <ShieldCheck className="h-6 w-6 text-white" />
             </div>
-            <div className="text-xs uppercase tracking-[0.25em] text-amber-400 font-semibold">Performance Directorate</div>
+            <div className="text-xs uppercase tracking-[0.25em] text-teal-400 font-semibold">Performance Directorate</div>
           </div>
           <motion.div variants={staggerContainer} initial="hidden" animate="show" className="space-y-6">
             <motion.h1 variants={fadeUp} className="font-display text-4xl sm:text-5xl lg:text-6xl font-bold leading-[1.05] tracking-tight">
-              Police Unit<br />Performance<br /><span className="text-amber-400">Dashboard</span>
+              Police Unit<br />Performance<br /><span className="text-teal-400">Dashboard</span>
             </motion.h1>
             <motion.p variants={fadeUp} className="max-w-md text-slate-300 text-base leading-relaxed">
               One consistent, explainable view of conviction performance and charge-sheet timeliness across every unit and range.
             </motion.p>
             <motion.div variants={staggerContainer} className="grid grid-cols-2 gap-4 max-w-md">
-              <motion.div variants={softScale} className="border border-white/10 bg-white/5 backdrop-blur-md p-4 rounded-sm hover:border-amber-400/30 transition-colors">
-                <Scale className="h-5 w-5 text-amber-400" />
+              <motion.div variants={softScale} className="border border-white/10 bg-white/5 backdrop-blur-md p-4 rounded-sm hover:border-teal-400/35 transition-colors">
+                <Scale className="h-5 w-5 text-teal-400" />
                 <div className="mt-3 text-sm font-semibold">Conviction</div>
                 <div className="text-xs text-slate-400">JMFC · Session</div>
               </motion.div>
-              <motion.div variants={softScale} className="border border-white/10 bg-white/5 backdrop-blur-md p-4 rounded-sm hover:border-amber-400/30 transition-colors">
-                <Timer className="h-5 w-5 text-amber-400" />
+              <motion.div variants={softScale} className="border border-white/10 bg-white/5 backdrop-blur-md p-4 rounded-sm hover:border-teal-400/35 transition-colors">
+                <Timer className="h-5 w-5 text-teal-400" />
                 <div className="mt-3 text-sm font-semibold">Timeliness</div>
                 <div className="text-xs text-slate-400">60 Day · 90 Day</div>
               </motion.div>

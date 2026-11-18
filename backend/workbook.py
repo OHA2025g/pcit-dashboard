@@ -4,6 +4,7 @@ Supports:
 - Conviction / Timeliness: wide 'Source Data' sheet
 - Emergency 112: long 'Mastersheet' monthly district facts
 - Training: long 'Mastersheet' quarterly unit facts
+- ANTF Meetings: wide 'Meeting Conducted' unit snapshot
 """
 import io
 import re
@@ -209,12 +210,58 @@ def parse_training(wb, rows=None) -> dict:
     }
 
 
+def parse_antf(wb, rows=None) -> dict:
+    """ANTF Meetings Conducted sheet — cumulative meetings + NCORD MoM uploads."""
+    sheet = "Meeting Conducted" if "Meeting Conducted" in wb.sheetnames else None
+    if sheet is None:
+        raise WorkbookError("Sheet 'Meeting Conducted' not found")
+    rows = list(rows) if rows is not None else list(wb[sheet].iter_rows(values_only=True))
+    if len(rows) < 3:
+        raise WorkbookError("Meeting Conducted sheet is empty")
+    header = " ".join(str(c or "") for c in rows[1]).lower()
+    if "name of unit" not in header or "total number of meetings" not in header:
+        raise WorkbookError("Meeting Conducted does not look like ANTF Meetings data")
+    # Column layout (row 2 header): unit, established, Jan..Oct, meetings, mom, meet_marks, min_marks, total, rank, clubbing
+    facts, units_seen, issues = [], [], []
+    period = "YTD 2026"
+    for i, r in enumerate(rows[2:], start=3):
+        if not r or r[0] in (None, ""):
+            continue
+        unit = _clean_unit(r[0])
+        try:
+            meetings = _num(r[12])
+            mom = _num(r[13])
+        except WorkbookError as exc:
+            issues.append(f"Row {i} {unit}: {exc}")
+            continue
+        # den = meetings conducted; num = MoM uploaded count (NCORD)
+        facts.append({
+            "unit": unit, "range": "", "type": "All", "period": period,
+            "den": meetings, "num": mom, "beyond": 0,
+            "meetings": meetings, "mom_uploaded": mom,
+        })
+        if unit not in units_seen:
+            units_seen.append(unit)
+    if not facts:
+        raise WorkbookError("No unit rows found on Meeting Conducted")
+    return {
+        "domain": "antf",
+        "periods": [period],
+        "types": ["All"],
+        "facts": facts,
+        "unit_count": len(units_seen),
+        "issues": issues[:50],
+    }
+
+
 def parse_workbook(content: bytes):
     try:
         wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     except Exception as exc:
         raise WorkbookError(f"Cannot open workbook: {exc}")
     names = wb.sheetnames
+    if "Meeting Conducted" in names:
+        return parse_antf(wb)
     if "Mastersheet" in names:
         # read_only sheets are single-pass — load once
         ms_rows = list(wb["Mastersheet"].iter_rows(values_only=True))
@@ -228,4 +275,4 @@ def parse_workbook(content: bytes):
             return parse_emergency112(wb, rows=ms_rows)
     if "Source Data" in names:
         return parse_source_data(wb)
-    raise WorkbookError("Sheet 'Source Data', 112 Mastersheet, or Training Mastersheet not found")
+    raise WorkbookError("Sheet 'Source Data', Meeting Conducted, 112 Mastersheet, or Training Mastersheet not found")

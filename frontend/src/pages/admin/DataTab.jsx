@@ -42,8 +42,8 @@ export default function DataTab() {
       <Panel title="Upload a newer workbook" subtitle="Same layout as the Conviction or 60/90 Day workbook">
         <button onClick={() => input.current.click()} disabled={busy} data-testid="upload-dropzone"
           onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); upload(e.dataTransfer.files[0]); }}
-          className="w-full border-2 border-dashed border-slate-300 hover:border-blue-900 hover:bg-blue-50/40 transition-colors rounded-sm p-8 flex flex-col items-center text-center">
-          {busy ? <Loader2 className="h-8 w-8 animate-spin text-blue-900" /> : <Upload className="h-8 w-8 text-blue-900" />}
+          className="w-full border-2 border-dashed border-slate-300 hover:border-brand-navy hover:bg-teal-50/50 transition-colors rounded-sm p-8 flex flex-col items-center text-center">
+          {busy ? <Loader2 className="h-8 w-8 animate-spin text-brand-navy" /> : <Upload className="h-8 w-8 text-brand-navy" />}
           <div className="mt-3 text-sm font-semibold">{busy ? "Validating & importing…" : "Drop .xlsm / .xlsx here or click to browse"}</div>
           <div className="text-xs text-slate-500 mt-1">The "Source Data" sheet is read; macros are never run. Domain is detected automatically.</div>
         </button>

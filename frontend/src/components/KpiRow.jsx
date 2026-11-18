@@ -32,6 +32,33 @@ export default function KpiRow({ domain, data, f, labels, included }) {
   const selName = selectionLabel(f);
   const singleUnit = f.unit && f.unit !== "All";
 
+  if (domain === "antf") {
+    return (
+      <div className="space-y-5">
+        <div>
+          <RowLabel>Statewide</RowLabel>
+          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3" data-testid="kpi-row">
+            <Kpi testId="kpi-total-meetings" label="Total meetings from Jan 2026" value={fmtInt(s.total_meetings)} sub={scope} accent />
+            <Kpi testId="kpi-mom-uploaded" label="MoM uploaded (NCORD)" value={fmtInt(s.total_mom_uploaded)} sub="Months with minutes uploaded" />
+            <Kpi testId="kpi-total-marks" label="Total marks scored" value={fmtInt(s.total_marks)} sub="Meetings×3 + MoM×2" accent />
+            <Kpi testId="kpi-avg-marks" label="Avg marks / unit" value={fmt(s.avg_marks, 1)} sub={`${fmtInt(s.scored_count)} units`} />
+            <Kpi testId="kpi-units" label="Units" value={fmtInt(s.unit_count)} sub={top ? `#1 ${top.unit}` : scope} />
+          </motion.div>
+        </div>
+        <div>
+          <RowLabel>Selection</RowLabel>
+          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3" data-testid="kpi-unit-row">
+            <Kpi testId="kpi-sel-units" label="Units" value={fmtInt(sel.unit_count)} sub={selName} />
+            <Kpi testId="kpi-sel-meetings" label="Meetings" value={fmtInt(sel.total_meetings)} sub="From Jan 2026" />
+            <Kpi testId="kpi-sel-mom" label="MoM uploaded" value={fmtInt(sel.total_mom_uploaded)} sub="NCORD portal" />
+            <Kpi testId="kpi-sel-marks" label="Total marks" value={fmtInt(sel.total_marks)} sub="Selected units" accent />
+            <Kpi testId="kpi-sel-avg" label="Avg marks" value={fmt(sel.avg_marks, 1)} sub={top && singleUnit ? `Rank #${top.rank} · ${top.category}` : "Selected"} />
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
+
   if (domain === "training") {
     return (
       <div className="space-y-5">
@@ -64,7 +91,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
         <div>
           <div className="flex items-center gap-2 mb-2">
             <button type="button" onClick={() => setShowSignals((v) => !v)} aria-expanded={showSignals} data-testid="signals-toggle"
-              className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.16em] font-bold text-slate-500 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50 rounded-sm">
+              className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.16em] font-bold text-slate-500 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600/50 rounded-sm">
               Signals
               <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${showSignals ? "rotate-0" : "-rotate-90"}`} aria-hidden />
             </button>
@@ -118,7 +145,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
         <div>
           <div className="flex items-center gap-2 mb-2">
             <button type="button" onClick={() => setShowSignals((v) => !v)} aria-expanded={showSignals} data-testid="signals-toggle"
-              className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.16em] font-bold text-slate-500 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50 rounded-sm">
+              className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.16em] font-bold text-slate-500 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600/50 rounded-sm">
               Signals
               <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${showSignals ? "rotate-0" : "-rotate-90"}`} aria-hidden />
             </button>
@@ -196,7 +223,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
             onClick={() => setShowSignals((v) => !v)}
             aria-expanded={showSignals}
             data-testid="signals-toggle"
-            className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.16em] font-bold text-slate-500 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/50 rounded-sm"
+            className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.16em] font-bold text-slate-500 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600/50 rounded-sm"
           >
             Signals
             <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${showSignals ? "rotate-0" : "-rotate-90"}`} aria-hidden />

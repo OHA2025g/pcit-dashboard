@@ -50,19 +50,27 @@ export default function DomainDashboard({ domain }) {
         "Rank by Marks (1 = highest). Category from Excel clubbing: Top ≤10, Good ≤20, Needs Improvement ≤30, else Low. Score for charts/combined = Marks × 10.",
         `Scoring policy v${data?.policy_version ?? "-"} · dataset ${meta.dataset.filename} (${meta.dataset.source}) · as of ${fmtDate(meta.dataset.uploaded_at)}`,
       ]
-      : [
-        `Rate = 100 × ${labels.num} ÷ ${labels.den}. Improvement = latest rate − base rate (percentage points).`,
-        `Performance score = (unit latest rate − cohort min) ÷ (cohort max − cohort min) × 100. Overall = ${w}% performance + ${100 - w}% improvement score.`,
-        `Scoring policy v${data?.policy_version ?? "-"} · dataset ${meta.dataset.filename} (${meta.dataset.source}) · as of ${fmtDate(meta.dataset.uploaded_at)}`,
-      ];
+      : domain === "antf"
+        ? [
+          "Total meetings from January 2026. MoM uploaded = months with minutes on the NCORD portal.",
+          "Total marks = (meetings × 3) + (MoM uploaded × 2). Rank by total marks (1 = highest; ties share rank). Performance: Top ≤10, Good ≤20, Needs Improvement ≤30, else Low.",
+          `Scoring policy v${data?.policy_version ?? "-"} · dataset ${meta.dataset.filename} (${meta.dataset.source}) · as of ${fmtDate(meta.dataset.uploaded_at)}`,
+        ]
+        : [
+          `Rate = 100 × ${labels.num} ÷ ${labels.den}. Improvement = latest rate − base rate (percentage points).`,
+          `Performance score = (unit latest rate − cohort min) ÷ (cohort max − cohort min) × 100. Overall = ${w}% performance + ${100 - w}% improvement score.`,
+          `Scoring policy v${data?.policy_version ?? "-"} · dataset ${meta.dataset.filename} (${meta.dataset.source}) · as of ${fmtDate(meta.dataset.uploaded_at)}`,
+        ];
 
   return (
     <div data-testid={`dashboard-${domain}`}>
       <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.2em] text-amber-700 font-semibold">Domain dashboard</div>
-          <div className="h-0.5 w-8 bg-amber-500 mt-2 mb-2 rounded-full" />
-          <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-slate-900" data-testid="dashboard-title">{labels.label} Performance</h1>
+          <div className="text-[11px] uppercase tracking-[0.2em] text-teal-700 font-semibold">Domain dashboard</div>
+          <div className="h-0.5 w-8 bg-teal-600 mt-2 mb-2 rounded-full" />
+          <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-slate-900" data-testid="dashboard-title">
+            {`${String(labels.label || "").replace(/\s*Performance\s*$/i, "").trim()} Performance`}
+          </h1>
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-600 surface-panel px-3 py-2 rounded-sm" data-testid="dataset-status">
           <span className="inline-flex h-5 w-5 items-center justify-center rounded-sm bg-emerald-50 text-emerald-700">
@@ -72,12 +80,12 @@ export default function DomainDashboard({ domain }) {
         </div>
       </div>
       <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} />
-      {samePeriod && <div className="mt-4 flex items-center gap-2 text-xs bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2 rounded-sm" data-testid="same-period-warning"><Info className="h-4 w-4" />Base and latest period are the same — improvement will be zero.</div>}
-      {meta.scope_range && <div className="mt-4 text-xs text-slate-600 bg-blue-50 border border-blue-200 px-3 py-2 rounded-sm" data-testid="scope-notice">Showing units of <b>{meta.scope_range}</b> only. Ranks and scores are computed against the full statewide cohort.</div>}
+      {samePeriod && domain !== "antf" && <div className="mt-4 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="same-period-warning"><Info className="h-4 w-4" />Base and latest period are the same — improvement will be zero.</div>}
+      {meta.scope_range && <div className="mt-4 text-xs text-slate-600 bg-sky-50 border border-sky-200 px-3 py-2 rounded-sm" data-testid="scope-notice">Showing units of <b>{meta.scope_range}</b> only. Ranks and scores are computed against the full statewide cohort.</div>}
       {!data ? <div className="flex items-center gap-2 text-slate-500 mt-16 justify-center"><Loader2 className="h-5 w-5 animate-spin" />Calculating scores…</div> : (
         <div className="space-y-5 mt-5">
           <KpiRow domain={domain} data={data} f={f} labels={labels} included={included} />
-          <ChartsPanel domain={domain} rows={included} onSelectUnit={setExplainUnit} filterLabel={(domain === "emergency112" || domain === "training") ? `${f.base} → ${f.latest}` : `${f.type} · ${f.base} → ${f.latest}`} />
+          <ChartsPanel domain={domain} rows={included} onSelectUnit={setExplainUnit} filterLabel={(domain === "emergency112" || domain === "training") ? `${f.base} → ${f.latest}` : domain === "antf" ? (f.latest || "YTD 2026") : `${f.type} · ${f.base} → ${f.latest}`} />
           <RankingTable domain={domain} labels={labels} rows={data.rows} onExplain={setExplainUnit} exportContext={context} exportNotes={notes} />
           <p className="text-[11px] text-slate-500 leading-relaxed" data-testid="definitions-note">{notes.join(" ")} Faded rows are outside the current filters.</p>
         </div>

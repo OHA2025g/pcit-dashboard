@@ -14,8 +14,8 @@ const Row = ({ label, before, after }) => {
   const changed = JSON.stringify(before) !== JSON.stringify(after);
   const list = (v) => (Array.isArray(v) ? v : [v]).map((x, i) => <div key={i}>{x}</div>);
   return (
-    <tr className={`border-t border-slate-100 align-top ${changed ? "bg-amber-50/60" : ""}`}>
-      <td className="px-4 py-2.5 font-medium text-sm whitespace-nowrap">{label}{changed && <span className="ml-2 text-[10px] font-bold text-amber-700">CHANGED</span>}</td>
+    <tr className={`border-t border-slate-100 align-top ${changed ? "bg-teal-50/60" : ""}`}>
+      <td className="px-4 py-2.5 font-medium text-sm whitespace-nowrap">{label}{changed && <span className="ml-2 text-[10px] font-bold text-teal-700">CHANGED</span>}</td>
       <td className="px-4 py-2.5 font-num text-xs text-slate-600">{list(before)}</td>
       <td className={`px-4 py-2.5 font-num text-xs ${changed ? "text-slate-900 font-semibold" : "text-slate-600"}`}>{list(after)}</td>
     </tr>
@@ -41,17 +41,25 @@ const Diff = ({ current, proposed }) => (
           after={[...(proposed.training.ranking_bands || []).map((b) => `≥${b.min_pct}% → ${b.marks}`), `otherwise → ${proposed.training.default_marks ?? 0}`]}
         />
       )}
+      {current.antf && proposed.antf && (
+        <Row
+          key="antf-marks"
+          label="ANTF mark weights"
+          before={`${current.antf.meeting_mark ?? 3} / meeting · ${current.antf.upload_mark ?? 2} / MoM`}
+          after={`${proposed.antf.meeting_mark ?? 3} / meeting · ${proposed.antf.upload_mark ?? 2} / MoM`}
+        />
+      )}
       <Row label="Rank categories" before={rankText(current)} after={rankText(proposed)} />
       <Row
         label="Combined index weight"
-        before={current.combined_weights ? `${Math.round(current.combined_weights.conviction * 100)}/${Math.round(current.combined_weights.timeliness * 100)}/${Math.round((current.combined_weights.emergency112 || 0) * 100)}/${Math.round((current.combined_weights.training || 0) * 100)}` : `${Math.round((current.combined_weight ?? 0.5) * 100)}% conviction`}
-        after={proposed.combined_weights ? `${Math.round(proposed.combined_weights.conviction * 100)}/${Math.round(proposed.combined_weights.timeliness * 100)}/${Math.round((proposed.combined_weights.emergency112 || 0) * 100)}/${Math.round((proposed.combined_weights.training || 0) * 100)}` : `${Math.round((proposed.combined_weight ?? 0.5) * 100)}% conviction`}
+        before={current.combined_weights ? `${Math.round(current.combined_weights.conviction * 100)}/${Math.round(current.combined_weights.timeliness * 100)}/${Math.round((current.combined_weights.emergency112 || 0) * 100)}/${Math.round((current.combined_weights.training || 0) * 100)}/${Math.round((current.combined_weights.antf || 0) * 100)}` : `${Math.round((current.combined_weight ?? 0.5) * 100)}% conviction`}
+        after={proposed.combined_weights ? `${Math.round(proposed.combined_weights.conviction * 100)}/${Math.round(proposed.combined_weights.timeliness * 100)}/${Math.round((proposed.combined_weights.emergency112 || 0) * 100)}/${Math.round((proposed.combined_weights.training || 0) * 100)}/${Math.round((proposed.combined_weights.antf || 0) * 100)}` : `${Math.round((proposed.combined_weight ?? 0.5) * 100)}% conviction`}
       />
     </tbody>
   </table>
 );
 
-const STATUS = { approved: "text-emerald-700 bg-emerald-50", rejected: "text-rose-700 bg-rose-50", pending: "text-amber-800 bg-amber-50", withdrawn: "text-slate-600 bg-slate-100", superseded: "text-slate-600 bg-slate-100" };
+const STATUS = { approved: "text-emerald-700 bg-emerald-50", rejected: "text-rose-700 bg-rose-50", pending: "text-teal-800 bg-teal-50", withdrawn: "text-slate-600 bg-slate-100", superseded: "text-slate-600 bg-slate-100" };
 
 export default function ApprovalsPage() {
   const api = useApi();
@@ -79,7 +87,7 @@ export default function ApprovalsPage() {
   return (
     <div className="space-y-5" data-testid="approvals-page">
       <div>
-        <div className="text-[11px] uppercase tracking-[0.2em] text-amber-700 font-semibold">Maker · checker</div>
+        <div className="text-[11px] uppercase tracking-[0.2em] text-teal-700 font-semibold">Maker · checker</div>
         <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 mt-1">Scoring rule approvals</h1>
         <p className="text-sm text-slate-500 mt-2 max-w-2xl">Admins propose changes to weights, bands and rank categories. A separate Approver must sign off before any dashboard uses them.</p>
       </div>

@@ -49,6 +49,13 @@ const CHARTS = {
     { id: "trained", label: "People trained", title: "Base vs latest people trained", unit: "people", keys: [["base_num", "Base trained"], ["latest_num", "Latest trained"]] },
     ...COMMON("Training"),
   ],
+  antf: [
+    { id: "meetings", label: "Meetings", title: "Total meetings from January 2026", unit: "meetings", keys: [["meetings", "Meetings"]], sort: true },
+    { id: "mom", label: "MoM uploaded", title: "MoM uploaded / not uploaded on NCORD Portal", unit: "months uploaded", keys: [["mom_uploaded", "MoM uploaded"]], sort: true },
+    { id: "marks", label: "Total marks", title: "Total marks scored (meetings×3 + MoM×2)", unit: "marks", keys: [["marks", "Total marks"]], sort: true },
+    { id: "rank", label: "Rank", title: "ANTF unit rank by total marks", unit: "rank (1 = best)", keys: [["rank", "Rank"]], rank: true },
+    { id: "split", label: "Marks split", title: "Meeting marks vs minutes-upload marks", unit: "marks", keys: [["meeting_marks", "Meeting marks"], ["upload_marks", "Minutes marks"]] },
+  ],
 };
 
 export default function ChartsPanel({ domain, rows, onSelectUnit, filterLabel }) {

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,51 +6,55 @@
 
 body {
     margin: 0;
-    font-family: 'IBM Plex Sans', sans-serif;
+    font-family: 'Source Sans 3', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
 
-.font-display { font-family: 'Outfit', sans-serif; }
-.font-num { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+.font-display { font-family: 'Sora', sans-serif; }
+.font-num { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
 
 @layer base {
     :root {
-        --background: 220 33% 97%;
-        --foreground: 222 47% 11%;
+        /* Cool grey-blue wash: #EEF2F6 → #E4EAF1 */
+        --background: 210 24% 95%;
+        --foreground: 215 28% 12%;
         --card: 0 0% 100%;
-        --card-foreground: 222 47% 11%;
+        --card-foreground: 215 28% 12%;
         --popover: 0 0% 100%;
-        --popover-foreground: 222 47% 11%;
-        --primary: 224 64% 33%;
+        --popover-foreground: 215 28% 12%;
+        /* Steel blue #0F3D5E */
+        --primary: 201 73% 21%;
         --primary-foreground: 0 0% 100%;
-        --secondary: 214 32% 94%;
-        --secondary-foreground: 222 47% 11%;
-        --muted: 214 32% 95%;
-        --muted-foreground: 215 16% 42%;
-        --accent: 38 92% 94%;
-        --accent-foreground: 26 90% 30%;
+        --secondary: 210 20% 94%;
+        --secondary-foreground: 215 28% 12%;
+        --muted: 210 18% 94%;
+        --muted-foreground: 215 14% 40%;
+        /* Teal accent wash */
+        --accent: 173 35% 94%;
+        --accent-foreground: 175 77% 22%;
         --destructive: 0 72% 51%;
         --destructive-foreground: 0 0% 98%;
-        --border: 214 32% 89%;
-        --input: 214 32% 85%;
-        --ring: 224 64% 33%;
-        --chart-1: 224 64% 33%;
-        --chart-2: 215 20% 65%;
-        --chart-3: 32 95% 44%;
+        --border: 210 18% 86%;
+        --input: 210 16% 82%;
+        --ring: 175 77% 26%;
+        --chart-1: 201 73% 21%;
+        --chart-2: 210 16% 55%;
+        --chart-3: 175 77% 26%;
         --chart-4: 142 71% 35%;
         --chart-5: 0 72% 51%;
-        /* Align with product language (rounded-sm) */
         --radius: 0.25rem;
 
-        /* Brand aliases */
-        --brand-navy: 224 64% 33%;
-        --brand-amber: 38 92% 50%;
+        /* Brand: steel ink + teal accent */
+        --brand-navy: 201 73% 21%;
+        --brand-accent: 175 77% 26%;
+        --brand-amber: 175 77% 26%; /* alias → teal during restyle */
+        --brand-chrome: 220 47% 8%; /* #0B1220 */
         --surface: 0 0% 100%;
         --surface-elevated: 0 0% 100%;
-        --ink-muted: 215 16% 42%;
-        --page-wash-from: 220 40% 98%;
-        --page-wash-to: 220 28% 95%;
+        --ink-muted: 215 14% 40%;
+        --page-wash-from: 210 29% 95%; /* #EEF2F6 */
+        --page-wash-to: 214 22% 92%; /* #E4EAF1 */
     }
 }
 
@@ -59,8 +63,8 @@ body {
     body {
         @apply text-foreground;
         background:
-            radial-gradient(1200px 600px at 10% -10%, hsl(224 64% 33% / 0.04), transparent 55%),
-            radial-gradient(900px 500px at 100% 0%, hsl(38 92% 50% / 0.05), transparent 50%),
+            radial-gradient(1100px 520px at 8% -8%, hsl(201 73% 21% / 0.05), transparent 55%),
+            radial-gradient(900px 480px at 100% 0%, hsl(175 77% 26% / 0.04), transparent 50%),
             linear-gradient(180deg, hsl(var(--page-wash-from)), hsl(var(--page-wash-to)));
         background-attachment: fixed;
         min-height: 100vh;
@@ -69,33 +73,33 @@ body {
 
 .grid-texture {
     background-image:
-        linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px);
+        linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
     background-size: 28px 28px;
 }
 
 .page-grain {
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
 }
 
 .surface-panel {
     background: hsl(var(--surface));
     border: 1px solid hsl(var(--border));
     box-shadow:
-        inset 0 1px 0 hsl(0 0% 100% / 0.85),
-        0 1px 2px hsl(222 47% 11% / 0.03);
+        inset 0 1px 0 hsl(0 0% 100% / 0.9),
+        0 1px 2px hsl(215 28% 12% / 0.04);
 }
 
 .surface-panel-emphasis {
-    background: linear-gradient(180deg, hsl(0 0% 100%), hsl(220 33% 98%));
+    background: linear-gradient(180deg, hsl(0 0% 100%), hsl(210 24% 97%));
     border: 1px solid hsl(var(--border));
     box-shadow:
         inset 0 1px 0 hsl(0 0% 100%),
-        0 8px 24px -16px hsl(224 64% 33% / 0.25);
+        0 8px 24px -16px hsl(201 73% 21% / 0.22);
 }
 
 .kpi-accent-rail {
-    box-shadow: inset 3px 0 0 0 hsl(38 92% 50%);
+    box-shadow: inset 3px 0 0 0 hsl(var(--brand-accent));
 }
 
 .rise { animation: rise .45s cubic-bezier(.2,.7,.2,1) both; }

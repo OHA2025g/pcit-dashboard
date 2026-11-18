@@ -39,6 +39,18 @@ export const tableColumns = (domain, labels) => {
       { key: "rank_movement", label: "Rank move" },
     ];
   }
+  if (domain === "antf") {
+    return [
+      { key: "rank", label: "Rank of unit" },
+      { key: "unit", label: "Unit" },
+      { key: "meetings", label: "Meetings from Jan 2026" },
+      { key: "mom_uploaded", label: "MoM uploaded (NCORD)" },
+      { key: "meeting_marks", label: "Meeting marks (×3)" },
+      { key: "upload_marks", label: "Minutes marks (×2)" },
+      { key: "marks", label: "Total marks scored" },
+      { key: "category", label: "Performance" },
+    ];
+  }
   return [
     { key: "rank", label: "Rank" },
     { key: "unit", label: "Unit" },
@@ -65,7 +77,7 @@ export const tableColumns = (domain, labels) => {
   ];
 };
 
-const NUM_INT = ["base_den", "base_num", "latest_den", "latest_num", "latest_beyond", "latest_pending", "improvement_marks", "improvement_score"];
+const NUM_INT = ["base_den", "base_num", "latest_den", "latest_num", "latest_beyond", "latest_pending", "improvement_marks", "improvement_score", "meetings", "mom_uploaded", "meeting_marks", "upload_marks", "marks"];
 
 export default function RankingTable({ domain, labels, rows, onExplain, exportContext, exportNotes }) {
   const [q, setQ] = useState("");
@@ -90,8 +102,8 @@ export default function RankingTable({ domain, labels, rows, onExplain, exportCo
     if (c.key === "session_jmfc_gap") return <Delta value={v} suffix="" />;
     if (c.key === "unit") return <span className="font-medium text-slate-900">{v}</span>;
     if (c.key === "range") return <span className="text-slate-500">{v}</span>;
-    if (c.key === "rank") return <span className={`font-num font-bold ${v === 1 ? "text-amber-600" : "text-slate-900"}`}>{v ?? "—"}</span>;
-    if (c.key === "overall_score") return <span className="font-num font-bold text-blue-900">{fmt(v)}</span>;
+    if (c.key === "rank") return <span className={`font-num font-bold ${v === 1 ? "text-teal-600" : "text-slate-900"}`}>{v ?? "—"}</span>;
+    if (c.key === "overall_score") return <span className="font-num font-bold text-brand-navy">{fmt(v)}</span>;
     if (c.key === "marks") return <span className="font-num font-bold text-teal-800">{v ?? "—"}</span>;
     if (c.key === "base_total_sec" || c.key === "latest_total_sec") return <span className="font-num">{fmtDuration(v)}</span>;
     if (c.key === "time_improvement_pct" || c.key === "pct_improvement") return <Delta value={v} suffix="" />;
@@ -124,11 +136,11 @@ export default function RankingTable({ domain, labels, rows, onExplain, exportCo
           </thead>
           <tbody>
             {view.map((r) => (
-              <tr key={r.unit} className={`border-b border-slate-100 hover:bg-amber-50/60 transition-colors ${r.rank === 1 && r.included ? "bg-amber-50/30" : ""} ${r.included ? "" : "opacity-40"}`} data-testid={`ranking-row-${slug(r.unit)}`}>
+              <tr key={r.unit} className={`border-b border-slate-100 hover:bg-teal-50/60 transition-colors ${r.rank === 1 && r.included ? "bg-teal-50/30" : ""} ${r.included ? "" : "opacity-40"}`} data-testid={`ranking-row-${slug(r.unit)}`}>
                 {cols.map((c) => <td key={c.key} className="px-3 py-2 whitespace-nowrap">{render(r, c)}</td>)}
                 <td className="px-3 py-2">
                   <button disabled={!r.eligible} onClick={() => onExplain(r.unit)} data-testid={`explain-btn-${slug(r.unit)}`}
-                    className="inline-flex items-center gap-1 text-xs text-blue-900 hover:text-amber-700 disabled:opacity-30 transition-colors font-medium">
+                    className="inline-flex items-center gap-1 text-xs text-brand-navy hover:text-teal-700 disabled:opacity-30 transition-colors font-medium">
                     <Calculator className="h-3.5 w-3.5" />Steps
                   </button>
                 </td>

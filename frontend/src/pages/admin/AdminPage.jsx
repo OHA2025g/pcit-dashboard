@@ -20,7 +20,7 @@ export default function AdminPage() {
   if (me.role !== "admin") return <div className="text-sm text-rose-700 mt-10" data-testid="admin-forbidden">Admins only.</div>;
   return (
     <div data-testid="admin-page">
-      <div className="text-[11px] uppercase tracking-[0.2em] text-amber-700 font-semibold">Administration</div>
+      <div className="text-[11px] uppercase tracking-[0.2em] text-teal-700 font-semibold">Administration</div>
       <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
         <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 mt-1">Control room</h1>
         <ProjectDownload />

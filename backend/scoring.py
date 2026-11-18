@@ -1,4 +1,4 @@
-"""Pure KPI + scoring engine for Conviction, Timeliness, Emergency 112, and Training domains."""
+"""Pure KPI + scoring engine for Conviction, Timeliness, Emergency 112, Training, and ANTF domains."""
 from statistics import pstdev
 
 DOMAINS = {
@@ -21,6 +21,11 @@ DOMAINS = {
     "training": {
         "label": "Training Performance",
         "den": "Unit headcount", "num": "People trained", "rate": "% people trained",
+        "types": ["All"],
+    },
+    "antf": {
+        "label": "ANTF Meetings",
+        "den": "Meetings conducted", "num": "MoM uploaded (NCORD)", "rate": "Upload rate",
         "types": ["All"],
     },
 }
@@ -102,6 +107,17 @@ DEFAULT_POLICY = {
         ],
         "rank_default": "Low Performer",
     },
+    "antf": {
+        # Excel Ranking: meetings × 3 + MoM uploads × 2
+        "meeting_mark": 3,
+        "upload_mark": 2,
+        "rank_bands": [
+            {"max_rank": 10, "label": "Top Performer"},
+            {"max_rank": 20, "label": "Good Performer"},
+            {"max_rank": 30, "label": "Needs Improvement"},
+        ],
+        "rank_default": "Low Performer",
+    },
     "rank_bands": [
         {"max_rank": 10, "label": "Top Performer"},
         {"max_rank": 20, "label": "Good Performer"},
@@ -111,7 +127,7 @@ DEFAULT_POLICY = {
     "rank_default": "Low Performer",
     "combined_weight": 0.5,
     "combined_weights": {
-        "conviction": 0.25, "timeliness": 0.25, "emergency112": 0.25, "training": 0.25,
+        "conviction": 0.2, "timeliness": 0.2, "emergency112": 0.2, "training": 0.2, "antf": 0.2,
     },
 }
 
@@ -120,6 +136,7 @@ EMERGENCY112_CATEGORIES = [
     "Excellent Performer", "Good Performer", "Moderate Performer", "Needs Improvement", "Low Performer",
 ]
 TRAINING_CATEGORIES = ["Top Performer", "Good Performer", "Needs Improvement", "Low Performer"]
+ANTF_CATEGORIES = ["Top Performer", "Good Performer", "Needs Improvement", "Low Performer"]
 
 
 def categories_for(domain: str):
@@ -127,6 +144,8 @@ def categories_for(domain: str):
         return EMERGENCY112_CATEGORIES
     if domain == "training":
         return TRAINING_CATEGORIES
+    if domain == "antf":
+        return ANTF_CATEGORIES
     return CATEGORIES
 
 
@@ -218,6 +237,8 @@ def score_units(domain, facts, units, base, latest, policy):
         return score_emergency112(facts, units, base, latest, policy)
     if domain == "training":
         return score_training(facts, units, base, latest, policy)
+    if domain == "antf":
+        return score_antf(facts, units, base, latest, policy)
     dp = policy[domain]
     w = dp["perf_weight"]
     rows = []
@@ -391,6 +412,64 @@ def score_training(facts, units, base, latest, policy):
     return rows, cohort
 
 
+def score_antf(facts, units, base, latest, policy):
+    """ANTF Meetings — marks = meetings×3 + MoM uploads×2; competition rank by total marks."""
+    dp = policy.get("antf") or DEFAULT_POLICY["antf"]
+    meet_pts = float(dp.get("meeting_mark", 3))
+    upload_pts = float(dp.get("upload_mark", 2))
+    rows = []
+    for unit, rng in units:
+        lf = facts.get((unit, latest)) or facts.get((unit, base))
+        meetings = (lf.get("meetings") if lf and lf.get("meetings") is not None else (lf.get("den", 0) if lf else 0)) or 0
+        mom = (lf.get("mom_uploaded") if lf and lf.get("mom_uploaded") is not None else (lf.get("num", 0) if lf else 0)) or 0
+        r = {
+            "unit": unit, "range": rng or "",
+            "base_den": meetings, "base_num": mom, "latest_den": meetings, "latest_num": mom,
+            "base_rate": None, "latest_rate": None,
+            "meetings": meetings, "mom_uploaded": mom,
+            "eligible": lf is not None,
+        }
+        if r["eligible"]:
+            r["meeting_marks"] = meetings * meet_pts
+            r["upload_marks"] = mom * upload_pts
+            r["marks"] = r["meeting_marks"] + r["upload_marks"]
+            r["overall_score"] = r["marks"]
+            r["performance_score"] = r["marks"]
+            r["improvement"] = None
+            r["improvement_marks"] = None
+            r["improvement_score"] = None
+        else:
+            r.update(
+                meeting_marks=None, upload_marks=None, marks=None, overall_score=None,
+                performance_score=None, improvement=None, improvement_marks=None,
+                improvement_score=None, rank=None, category="Not scored",
+            )
+        rows.append(r)
+
+    elig = [r for r in rows if r["eligible"]]
+    marks_vals = [r["marks"] for r in elig]
+    mn, mx = (min(marks_vals), max(marks_vals)) if marks_vals else (0, 0)
+    min_unit = next((r["unit"] for r in elig if r["marks"] == mn), None)
+    max_unit = next((r["unit"] for r in elig if r["marks"] == mx), None)
+    ordered = sorted(elig, key=lambda x: (-x["marks"], -x["meetings"], -x["mom_uploaded"], x["unit"]))
+    # Competition rank (ties share rank; next rank skips) — matches Excel
+    i = 0
+    while i < len(ordered):
+        j = i + 1
+        while j < len(ordered) and ordered[j]["marks"] == ordered[i]["marks"]:
+            j += 1
+        rank = i + 1
+        for k in range(i, j):
+            ordered[k]["rank"] = rank
+            ordered[k]["category"] = training_rank_category(rank, dp)
+        i = j
+    cohort = {
+        "min_rate": mn, "max_rate": mx, "min_unit": min_unit, "max_unit": max_unit,
+        "eligible": len(elig), "covered": len(rows), "weight": 1.0,
+    }
+    return rows, cohort
+
+
 def _rate_at(facts, unit, period):
     f = facts.get((unit, period))
     return rate(f["num"], f["den"]) if f else None
@@ -456,14 +535,14 @@ def enrich(domain, rows, data, types, type_, periods, base, latest, policy):
 
 
 def combined_weights(policy):
-    keys = ("conviction", "timeliness", "emergency112", "training")
+    keys = ("conviction", "timeliness", "emergency112", "training", "antf")
     cw = policy.get("combined_weights")
     if cw and all(k in cw for k in keys):
         return {k: cw[k] for k in keys}
-    # Legacy 2-domain weight → split remainder equally across newer domains
+    # Legacy weight → split remainder equally across newer domains
     w = policy.get("combined_weight", 0.5)
-    rem = (1 - w) / 3
-    return {"conviction": w, "timeliness": rem, "emergency112": rem, "training": rem}
+    rem = (1 - w) / 4
+    return {"conviction": w, "timeliness": rem, "emergency112": rem, "training": rem, "antf": rem}
 
 
 def _norm_unit(name: str) -> str:
@@ -479,7 +558,7 @@ def _index_by_map(rows, unit_map):
     return idx
 
 
-def combine(conv_rows, tim_rows, e112_rows, training_rows, unit_map, unit_map_112, unit_map_training, policy):
+def combine(conv_rows, tim_rows, e112_rows, training_rows, antf_rows, unit_map, unit_map_112, unit_map_training, unit_map_antf, policy):
     """Combined police performance index from each domain's overall score."""
     weights = combined_weights(policy)
     tim = _index_by_map(tim_rows, {k: v for k, v in unit_map.items()})
@@ -491,11 +570,13 @@ def combine(conv_rows, tim_rows, e112_rows, training_rows, unit_map, unit_map_11
             tim[_norm_unit(t_name)] = row
     e112 = _index_by_map(e112_rows, unit_map_112)
     train = _index_by_map(training_rows, unit_map_training)
+    antf = _index_by_map(antf_rows, unit_map_antf)
     out = []
     for c in conv_rows:
         t = tim.get(_norm_unit(unit_map.get(c["unit"], c["unit"].upper()))) or tim.get(_norm_unit(c["unit"]))
         e = e112.get(_norm_unit(unit_map_112.get(c["unit"], c["unit"]))) or e112.get(_norm_unit(c["unit"]))
         tr = train.get(_norm_unit(unit_map_training.get(c["unit"], c["unit"]))) or train.get(_norm_unit(c["unit"]))
+        a = antf.get(_norm_unit(unit_map_antf.get(c["unit"], c["unit"]))) or antf.get(_norm_unit(c["unit"]))
         row = {
             "unit": c["unit"], "range": c["range"],
             "conviction_score": c["overall_score"], "conviction_rank": c["rank"],
@@ -508,15 +589,19 @@ def combine(conv_rows, tim_rows, e112_rows, training_rows, unit_map, unit_map_11
             "training_unit": tr["unit"] if tr else None,
             "training_score": tr["overall_score"] if tr else None,
             "training_rank": tr["rank"] if tr else None,
+            "antf_unit": a["unit"] if a else None,
+            "antf_score": a["overall_score"] if a else None,
+            "antf_rank": a["rank"] if a else None,
         }
         parts = []
         for key, score_key in (
             ("conviction", "conviction_score"), ("timeliness", "timeliness_score"),
             ("emergency112", "emergency112_score"), ("training", "training_score"),
+            ("antf", "antf_score"),
         ):
             if row[score_key] is not None:
                 parts.append((weights[key], row[score_key]))
-        if len(parts) == 4:
+        if len(parts) == 5:
             total_w = sum(w for w, _ in parts)
             row["combined_score"] = sum(w * s for w, s in parts) / total_w if total_w else None
         else:
@@ -566,6 +651,12 @@ def totals(domain, rows):
     elif domain == "training":
         marks = [r["marks"] for r in rows if r.get("marks") is not None]
         t["avg_marks"] = sum(marks) / len(marks) if marks else None
+    elif domain == "antf":
+        t["total_meetings"] = sum(r.get("meetings") or r.get("latest_den") or 0 for r in rows)
+        t["total_mom_uploaded"] = sum(r.get("mom_uploaded") or r.get("latest_num") or 0 for r in rows)
+        marks = [r["marks"] for r in rows if r.get("marks") is not None]
+        t["avg_marks"] = sum(marks) / len(marks) if marks else None
+        t["total_marks"] = sum(marks) if marks else None
     moved = [r.get("rank_movement") for r in rows if r.get("rank_movement") is not None]
     t["moved_up"] = sum(1 for m in moved if m > 0)
     t["moved_down"] = sum(1 for m in moved if m < 0)
@@ -583,6 +674,8 @@ def explain(domain, row, cohort, policy, type_, base, latest):
         return explain_emergency112(row, cohort, policy, base, latest)
     if domain == "training":
         return explain_training(row, cohort, policy, base, latest)
+    if domain == "antf":
+        return explain_antf(row, cohort, policy, base, latest)
     d = DOMAINS[domain]
     dp = policy[domain]
     w = dp["perf_weight"]
@@ -649,6 +742,32 @@ def explain_training(row, cohort, policy, base, latest):
         {"step": 6, "title": "Rank",
          "formula": f"Rank {row.get('rank')} of {cohort['eligible']} units by marks (1 = highest)"},
         {"step": 7, "title": "Category (Excel clubbing)",
+         "table": [[f"Rank ≤ {b['max_rank']}", b["label"]] for b in dp.get("rank_bands", [])] + [["Otherwise", dp.get("rank_default", "Low Performer")]],
+         "formula": f"Rank {row.get('rank')} → {row.get('category')}"},
+    ]
+
+
+def explain_antf(row, cohort, policy, base, latest):
+    dp = policy.get("antf") or DEFAULT_POLICY["antf"]
+    meet_pts = dp.get("meeting_mark", 3)
+    upload_pts = dp.get("upload_mark", 2)
+    n0 = lambda v: f"{v:,.0f}"
+    return [
+        {"step": 1, "title": "Selection", "lines": [["Unit", row["unit"]], ["Period", latest or base]]},
+        {"step": 2, "title": "Meetings & MoM uploads",
+         "lines": [
+             ["Total meetings from Jan 2026", n0(row.get("meetings"))],
+             ["MoM uploaded on NCORD Portal", n0(row.get("mom_uploaded"))],
+         ]},
+        {"step": 3, "title": "Marks",
+         "formula": (
+             f"(Meetings × {meet_pts}) + (MoM uploaded × {upload_pts}) = "
+             f"({n0(row.get('meetings'))} × {meet_pts}) + ({n0(row.get('mom_uploaded'))} × {upload_pts}) = "
+             f"{n0(row.get('meeting_marks'))} + {n0(row.get('upload_marks'))} = {n0(row.get('marks'))}"
+         )},
+        {"step": 4, "title": "Rank",
+         "formula": f"Rank {row.get('rank')} of {cohort['eligible']} units by total marks (1 = highest; ties share rank)"},
+        {"step": 5, "title": "Performance",
          "table": [[f"Rank ≤ {b['max_rank']}", b["label"]] for b in dp.get("rank_bands", [])] + [["Otherwise", dp.get("rank_default", "Low Performer")]],
          "formula": f"Rank {row.get('rank')} → {row.get('category')}"},
     ]
