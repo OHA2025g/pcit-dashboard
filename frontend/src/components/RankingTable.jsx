@@ -51,6 +51,25 @@ export const tableColumns = (domain, labels) => {
       { key: "category", label: "Performance" },
     ];
   }
+  if (domain === "hsp") {
+    return [
+      { key: "rank", label: "Rank" },
+      { key: "unit", label: "Unit" },
+      { key: "base_accidents", label: "Base accidents" },
+      { key: "latest_accidents", label: "Latest accidents" },
+      { key: "base_killed", label: "Base killed" },
+      { key: "latest_killed", label: "Latest killed" },
+      { key: "accident_perf_score", label: "Accident perf." },
+      { key: "killed_perf_score", label: "Killed perf." },
+      { key: "performance_score", label: "Final performance" },
+      { key: "accident_improvement_marks", label: "Acc. imp. marks" },
+      { key: "killed_improvement_marks", label: "Killed imp. marks" },
+      { key: "improvement_score", label: "Final improvement" },
+      { key: "overall_score", label: "Final score" },
+      { key: "category", label: "Category" },
+      { key: "rank_movement", label: "Rank move" },
+    ];
+  }
   return [
     { key: "rank", label: "Rank" },
     { key: "unit", label: "Unit" },
@@ -77,7 +96,7 @@ export const tableColumns = (domain, labels) => {
   ];
 };
 
-const NUM_INT = ["base_den", "base_num", "latest_den", "latest_num", "latest_beyond", "latest_pending", "improvement_marks", "improvement_score", "meetings", "mom_uploaded", "meeting_marks", "upload_marks", "marks"];
+const NUM_INT = ["base_den", "base_num", "latest_den", "latest_num", "latest_beyond", "latest_pending", "improvement_marks", "improvement_score", "meetings", "mom_uploaded", "meeting_marks", "upload_marks", "marks", "base_accidents", "latest_accidents", "base_killed", "latest_killed", "base_injured", "latest_injured", "accident_improvement_marks", "killed_improvement_marks"];
 
 export default function RankingTable({ domain, labels, rows, onExplain, exportContext, exportNotes }) {
   const [q, setQ] = useState("");

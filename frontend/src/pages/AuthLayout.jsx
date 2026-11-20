@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { ShieldCheck, Scale, Timer, Lock } from "lucide-react";
+import { Scale, Timer, Lock } from "lucide-react";
 import { softScale, staggerContainer, fadeUp } from "@/lib/motion";
 
 export default function AuthLayout({ children }) {
@@ -12,9 +12,12 @@ export default function AuthLayout({ children }) {
         <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-brand-chrome to-transparent" />
         <div className="relative z-10 flex flex-col justify-between p-14 w-full">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-sm bg-teal-600 flex items-center justify-center brand-tick">
-              <ShieldCheck className="h-6 w-6 text-white" />
-            </div>
+            <img
+              src="/maharashtra-police-logo.png"
+              alt="Maharashtra Police"
+              className="h-10 w-10 rounded-full object-cover shrink-0"
+              data-testid="auth-logo"
+            />
             <div className="text-xs uppercase tracking-[0.25em] text-teal-400 font-semibold">Performance Directorate</div>
           </div>
           <motion.div variants={staggerContainer} initial="hidden" animate="show" className="space-y-6">

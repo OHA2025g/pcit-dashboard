@@ -110,6 +110,52 @@ const AntfPolicyEditor = ({ dp, onChange }) => {
   );
 };
 
+const HspPolicyEditor = ({ dp, onChange }) => {
+  const setClub = (i, k, v) => onChange({ ...dp, rank_bands: dp.rank_bands.map((b, j) => (j === i ? { ...b, [k]: v } : b)) });
+  return (
+    <Panel title="HSP Performance" subtitle="Accidents + killed performance and reduction improvement" testId="policy-hsp">
+      <div className="text-xs font-semibold text-slate-600 mb-2">
+        Final blend: <span className="font-num text-brand-navy">{Math.round((dp.perf_weight ?? 0.7) * 100)}% performance</span>
+        {" / "}
+        <span className="font-num text-teal-700">{100 - Math.round((dp.perf_weight ?? 0.7) * 100)}% improvement</span>
+      </div>
+      <Slider value={[Math.round((dp.perf_weight ?? 0.7) * 100)]} min={0} max={100} step={5} onValueChange={([v]) => onChange({ ...dp, perf_weight: v / 100 })} data-testid="hsp-perf-weight" />
+      <div className="grid grid-cols-2 gap-3 mt-4 mb-5">
+        <div>
+          <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1">Accident perf %</div>
+          <Input type="number" value={Math.round((dp.accident_perf_weight ?? 0.3) * 100)} onChange={(e) => onChange({ ...dp, accident_perf_weight: num(e.target.value) / 100 })} className="h-8 rounded-sm font-num" data-testid="hsp-acc-perf" />
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1">Killed perf %</div>
+          <Input type="number" value={Math.round((dp.killed_perf_weight ?? 0.7) * 100)} onChange={(e) => onChange({ ...dp, killed_perf_weight: num(e.target.value) / 100 })} className="h-8 rounded-sm font-num" data-testid="hsp-kill-perf" />
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1">Accident imp %</div>
+          <Input type="number" value={Math.round((dp.accident_imp_weight ?? 0.2) * 100)} onChange={(e) => onChange({ ...dp, accident_imp_weight: num(e.target.value) / 100 })} className="h-8 rounded-sm font-num" data-testid="hsp-acc-imp" />
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1">Killed imp %</div>
+          <Input type="number" value={Math.round((dp.killed_imp_weight ?? 0.7) * 100)} onChange={(e) => onChange({ ...dp, killed_imp_weight: num(e.target.value) / 100 })} className="h-8 rounded-sm font-num" data-testid="hsp-kill-imp" />
+        </div>
+      </div>
+      <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-2">Rank clubbing</div>
+      <div className="space-y-2">
+        {(dp.rank_bands || []).map((b, i) => (
+          <div key={i} className="grid grid-cols-[auto_80px_1fr] gap-2 items-center">
+            <span className="text-xs text-slate-500">Rank ≤</span>
+            <Input type="number" value={b.max_rank} onChange={(e) => setClub(i, "max_rank", num(e.target.value))} className="h-8 rounded-sm font-num" data-testid={`hsp-rank-max-${i}`} />
+            <Input value={b.label} onChange={(e) => setClub(i, "label", e.target.value)} className="h-8 rounded-sm" data-testid={`hsp-rank-label-${i}`} />
+          </div>
+        ))}
+        <div className="grid grid-cols-[auto_1fr] gap-2 items-center">
+          <span className="text-xs text-slate-500">Otherwise</span>
+          <Input value={dp.rank_default || "Poor"} onChange={(e) => onChange({ ...dp, rank_default: e.target.value })} className="h-8 rounded-sm" data-testid="hsp-rank-default" />
+        </div>
+      </div>
+    </Panel>
+  );
+};
+
 export default function PolicyTab() {
   const api = useApi();
   const [p, setP] = useState(null);
@@ -142,6 +188,7 @@ export default function PolicyTab() {
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         {p.emergency112 && <DomainEditor name="112" dp={p.emergency112} onChange={(d) => setP({ ...p, emergency112: { ...p.emergency112, ...d } })} />}
+        {p.hsp && <HspPolicyEditor dp={p.hsp} onChange={(d) => setP({ ...p, hsp: d })} />}
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         {p.training && <TrainingRankingEditor dp={p.training} onChange={(d) => setP({ ...p, training: d })} />}
@@ -150,8 +197,8 @@ export default function PolicyTab() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <Panel title="Rank categories & combined index" subtitle="Map overall rank to a category; weight of each area in the combined index">
           {(() => {
-            const equal = 0.2;
-            const cw = p.combined_weights || { conviction: equal, timeliness: equal, emergency112: equal, training: equal, antf: equal };
+            const equal = 1 / 6;
+            const cw = p.combined_weights || { conviction: equal, timeliness: equal, emergency112: equal, hsp: equal, training: equal, antf: equal };
             const setCw = (key, pct) => {
               const next = { ...cw, [key]: pct / 100 };
               const rest = Object.keys(next).filter((k) => k !== key);
@@ -162,13 +209,15 @@ export default function PolicyTab() {
             };
             return (
               <div className="space-y-3 mb-5">
-                <div className="text-xs font-semibold text-slate-600">Combined index: <span className="font-num text-brand-navy">{Math.round((cw.conviction || 0) * 100)}% conviction</span> · <span className="font-num text-teal-700">{Math.round((cw.timeliness || 0) * 100)}% timeliness</span> · <span className="font-num text-cyan-700">{Math.round((cw.emergency112 || 0) * 100)}% 112</span> · <span className="font-num text-slate-700">{Math.round((cw.training || 0) * 100)}% training</span> · <span className="font-num text-rose-700">{Math.round((cw.antf || 0) * 100)}% ANTF</span></div>
+                <div className="text-xs font-semibold text-slate-600">Combined index: <span className="font-num text-brand-navy">{Math.round((cw.conviction || 0) * 100)}% conviction</span> · <span className="font-num text-teal-700">{Math.round((cw.timeliness || 0) * 100)}% timeliness</span> · <span className="font-num text-cyan-700">{Math.round((cw.emergency112 || 0) * 100)}% 112</span> · <span className="font-num text-orange-700">{Math.round((cw.hsp || 0) * 100)}% HSP</span> · <span className="font-num text-slate-700">{Math.round((cw.training || 0) * 100)}% training</span> · <span className="font-num text-rose-700">{Math.round((cw.antf || 0) * 100)}% ANTF</span></div>
                 <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Conviction share</div>
                 <Slider value={[Math.round((cw.conviction || 0) * 100)]} min={0} max={100} step={5} onValueChange={([v]) => setCw("conviction", v)} data-testid="policy-combined-weight" />
                 <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Timeliness share</div>
                 <Slider value={[Math.round((cw.timeliness || 0) * 100)]} min={0} max={100} step={5} onValueChange={([v]) => setCw("timeliness", v)} data-testid="policy-combined-timeliness" />
                 <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">112 share</div>
                 <Slider value={[Math.round((cw.emergency112 || 0) * 100)]} min={0} max={100} step={5} onValueChange={([v]) => setCw("emergency112", v)} data-testid="policy-combined-112" />
+                <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">HSP share</div>
+                <Slider value={[Math.round((cw.hsp || 0) * 100)]} min={0} max={100} step={5} onValueChange={([v]) => setCw("hsp", v)} data-testid="policy-combined-hsp" />
                 <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Training share</div>
                 <Slider value={[Math.round((cw.training || 0) * 100)]} min={0} max={100} step={5} onValueChange={([v]) => setCw("training", v)} data-testid="policy-combined-training" />
                 <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">ANTF share</div>

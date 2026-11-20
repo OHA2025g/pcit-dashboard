@@ -5,6 +5,7 @@ Supports:
 - Emergency 112: long 'Mastersheet' monthly district facts
 - Training: long 'Mastersheet' quarterly unit facts
 - ANTF Meetings: wide 'Meeting Conducted' unit snapshot
+- HSP: long 'Quaterly' (or Master sheet) accident/killed facts
 """
 import io
 import re
@@ -20,6 +21,17 @@ MONTH_ABBR = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep",
 
 class WorkbookError(ValueError):
     pass
+
+
+# Display renames applied at ingest so uploaded workbooks stay consistent in the app.
+RANGE_ALIASES = {
+    "Thane Range": "Kokan Range",
+}
+
+
+def _normalize_range(v) -> str:
+    rng = str(v or "").strip()
+    return RANGE_ALIASES.get(rng, rng)
 
 
 def _num(v):
@@ -89,7 +101,7 @@ def parse_source_data(wb) -> dict:
     for i, r in enumerate(rows[2:], start=3):
         if not r or not r[2] or not r[3]:
             continue
-        rng, unit, typ = str(r[1] or "").strip(), str(r[2]).strip(), str(r[3]).strip()
+        rng, unit, typ = _normalize_range(r[1]), str(r[2]).strip(), str(r[3]).strip()
         vals = r[4:4 + n * n_groups]
         for k, p in enumerate(periods):
             den, num = _num(vals[k]), _num(vals[n + k])
@@ -254,12 +266,92 @@ def parse_antf(wb, rows=None) -> dict:
     }
 
 
+def parse_hsp(wb, rows=None) -> dict:
+    """HSP Quaterly sheet — accidents, killed, injured by unit and quarter."""
+    sheet = "Quaterly" if "Quaterly" in wb.sheetnames else ("Master sheet" if "Master sheet" in wb.sheetnames else None)
+    if sheet is None:
+        raise WorkbookError("Sheet 'Quaterly' not found")
+    rows = list(rows) if rows is not None else list(wb[sheet].iter_rows(values_only=True))
+    if len(rows) < 2:
+        raise WorkbookError(f"{sheet} sheet is empty")
+    header = " ".join(str(c or "") for c in rows[0]).lower()
+    if "total accident" not in header or "total killed" not in header:
+        raise WorkbookError(f"{sheet} does not look like HSP accident/killed data")
+    # Quaterly: Sr, Unit, Quarter, Accident, Killed, Injured, ...
+    # Master sheet: Sr, Unit, Year, Month, Accident, Killed, Injured, ..., Quarter
+    is_master = sheet == "Master sheet"
+    facts_map = {}  # (unit, period) -> aggregates (dedupe / sum months)
+    period_order, units_seen, issues = [], [], []
+    for i, r in enumerate(rows[1:], start=2):
+        if not r or r[1] in (None, ""):
+            continue
+        unit = _clean_unit(r[1])
+        try:
+            if is_master:
+                period = str(r[12] or "").strip()
+                accidents, killed, injured = _num(r[4]), _num(r[5]), _num(r[6])
+            else:
+                period = str(r[2] or "").strip()
+                accidents, killed, injured = _num(r[3]), _num(r[4]), _num(r[5])
+        except WorkbookError as exc:
+            issues.append(f"Row {i} {unit}: {exc}")
+            continue
+        if not period:
+            issues.append(f"Row {i} {unit}: missing quarter")
+            continue
+        key = (unit, period)
+        if key in facts_map:
+            # Quaterly has duplicate identical rows — keep first; Master sums months
+            if is_master:
+                prev = facts_map[key]
+                prev["den"] += accidents
+                prev["num"] += killed
+                prev["beyond"] += injured
+                prev["accidents"] += accidents
+                prev["killed"] += killed
+                prev["injured"] += injured
+            continue
+        facts_map[key] = {
+            "unit": unit, "range": "", "type": "All", "period": period,
+            "den": accidents, "num": killed, "beyond": injured,
+            "accidents": accidents, "killed": killed, "injured": injured,
+        }
+        if period not in period_order:
+            period_order.append(period)
+        if unit not in units_seen:
+            units_seen.append(unit)
+    if not facts_map:
+        raise WorkbookError("No unit rows found on HSP Quaterly sheet")
+    if len(period_order) < 2:
+        raise WorkbookError("At least two quarters are required")
+    # Chronological order for quarter labels
+    _qord = {"Jan-Mar": 0, "Apr-Jun": 1, "Jul-Sep": 2, "Oct-Dec": 3}
+
+    def _pkey(p):
+        parts = str(p).split()
+        if len(parts) == 2 and parts[0] in _qord and parts[1].isdigit():
+            return (int(parts[1]), _qord[parts[0]])
+        return (0, 0, p)
+
+    period_order = sorted(period_order, key=_pkey)
+    return {
+        "domain": "hsp",
+        "periods": period_order,
+        "types": ["All"],
+        "facts": list(facts_map.values()),
+        "unit_count": len(units_seen),
+        "issues": issues[:50],
+    }
+
+
 def parse_workbook(content: bytes):
     try:
         wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     except Exception as exc:
         raise WorkbookError(f"Cannot open workbook: {exc}")
     names = wb.sheetnames
+    if "Quaterly" in names or ("Master sheet" in names and "Killed_Working" in names):
+        return parse_hsp(wb)
     if "Meeting Conducted" in names:
         return parse_antf(wb)
     if "Mastersheet" in names:
@@ -275,4 +367,4 @@ def parse_workbook(content: bytes):
             return parse_emergency112(wb, rows=ms_rows)
     if "Source Data" in names:
         return parse_source_data(wb)
-    raise WorkbookError("Sheet 'Source Data', Meeting Conducted, 112 Mastersheet, or Training Mastersheet not found")
+    raise WorkbookError("Sheet 'Source Data', Quaterly/HSP, Meeting Conducted, 112 Mastersheet, or Training Mastersheet not found")

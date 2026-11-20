@@ -12,6 +12,7 @@ TITLES = {
     "conviction": "Conviction",
     "timeliness": "Charge Sheet Timeliness",
     "emergency112": "112 Performance",
+    "hsp": "HSP Performance",
     "training": "Training Performance",
     "antf": "ANTF Meetings",
 }
@@ -19,6 +20,7 @@ RATE = {
     "conviction": "Conviction rate",
     "timeliness": "Within-time rate",
     "emergency112": "% closed ≤100m",
+    "hsp": "Final score",
     "training": "% people trained",
     "antf": "Total marks",
 }

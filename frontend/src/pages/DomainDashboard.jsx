@@ -8,7 +8,17 @@ import ExplainDialog from "@/components/ExplainDialog";
 import KpiRow from "@/components/KpiRow";
 import { fmtDate } from "@/lib/format";
 
-const initial = (m) => ({ type: m.types[m.types.length - 1], unit: "All", base: m.default_base, latest: m.default_latest, range: "All", category: "All" });
+const initial = (m) => ({ type: m.types[m.types.length - 1], unit: [], base: m.default_base, latest: m.default_latest, range: [], category: "All" });
+
+function filterParam(v) {
+  if (Array.isArray(v)) return v.length ? v.join(",") : "All";
+  return v && v !== "All" ? v : "All";
+}
+
+function filterLabel(v) {
+  if (Array.isArray(v)) return v.length ? v.join(", ") : "All";
+  return v || "All";
+}
 
 export default function DomainDashboard({ domain }) {
   const api = useApi();
@@ -25,11 +35,20 @@ export default function DomainDashboard({ domain }) {
 
   const load = useCallback(() => {
     if (!f) return;
-    api("get", "/dashboard", { params: { domain, ...f } }).then(setData).catch((e) => setError(errMsg(e)));
+    const params = {
+      domain,
+      type: f.type,
+      base: f.base,
+      latest: f.latest,
+      category: f.category,
+      unit: filterParam(f.unit),
+      range: filterParam(f.range),
+    };
+    api("get", "/dashboard", { params }).then(setData).catch((e) => setError(errMsg(e)));
   }, [api, domain, f]);
   useEffect(load, [load]);
 
-  const context = useMemo(() => f && ({ Domain: meta?.labels.label, "Case type": f.type, Unit: f.unit, "Base period": f.base, "Latest period": f.latest, Range: f.range, "Rank category": f.category, ...(meta?.scope_range ? { "Access scope": meta.scope_range } : {}) }), [f, meta]);
+  const context = useMemo(() => f && ({ Domain: meta?.labels.label, "Case type": f.type, Unit: filterLabel(f.unit), "Base period": f.base, "Latest period": f.latest, Range: filterLabel(f.range), "Rank category": f.category, ...(meta?.scope_range ? { "Access scope": meta.scope_range } : {}) }), [f, meta]);
 
   if (error) return <div className="text-rose-700 text-sm mt-10" data-testid="dashboard-error">{error}</div>;
   if (!meta || !f) return <div className="flex items-center gap-2 text-slate-500 mt-20 justify-center"><Loader2 className="h-5 w-5 animate-spin" />Loading…</div>;
@@ -56,6 +75,12 @@ export default function DomainDashboard({ domain }) {
           "Total marks = (meetings × 3) + (MoM uploaded × 2). Rank by total marks (1 = highest; ties share rank). Performance: Top ≤10, Good ≤20, Needs Improvement ≤30, else Low.",
           `Scoring policy v${data?.policy_version ?? "-"} · dataset ${meta.dataset.filename} (${meta.dataset.source}) · as of ${fmtDate(meta.dataset.uploaded_at)}`,
         ]
+        : domain === "hsp"
+          ? [
+            "Lower accident and killed counts score better. Performance = inverted min–max on latest accidents (30%) and killed (70%).",
+            `Improvement from reduction % bands (Excel Chart). Final score = ${w}% performance + ${100 - w}% improvement (accidents 20% / killed 70%). Category by rank: Excellent ≤5 … Poor.`,
+            `Scoring policy v${data?.policy_version ?? "-"} · dataset ${meta.dataset.filename} (${meta.dataset.source}) · as of ${fmtDate(meta.dataset.uploaded_at)}`,
+          ]
         : [
           `Rate = 100 × ${labels.num} ÷ ${labels.den}. Improvement = latest rate − base rate (percentage points).`,
           `Performance score = (unit latest rate − cohort min) ÷ (cohort max − cohort min) × 100. Overall = ${w}% performance + ${100 - w}% improvement score.`,
@@ -85,7 +110,7 @@ export default function DomainDashboard({ domain }) {
       {!data ? <div className="flex items-center gap-2 text-slate-500 mt-16 justify-center"><Loader2 className="h-5 w-5 animate-spin" />Calculating scores…</div> : (
         <div className="space-y-5 mt-5">
           <KpiRow domain={domain} data={data} f={f} labels={labels} included={included} />
-          <ChartsPanel domain={domain} rows={included} onSelectUnit={setExplainUnit} filterLabel={(domain === "emergency112" || domain === "training") ? `${f.base} → ${f.latest}` : domain === "antf" ? (f.latest || "YTD 2026") : `${f.type} · ${f.base} → ${f.latest}`} />
+          <ChartsPanel domain={domain} rows={included} onSelectUnit={setExplainUnit} filterLabel={(domain === "emergency112" || domain === "training" || domain === "hsp") ? `${f.base} → ${f.latest}` : domain === "antf" ? (f.latest || "YTD 2026") : `${f.type} · ${f.base} → ${f.latest}`} />
           <RankingTable domain={domain} labels={labels} rows={data.rows} onExplain={setExplainUnit} exportContext={context} exportNotes={notes} />
           <p className="text-[11px] text-slate-500 leading-relaxed" data-testid="definitions-note">{notes.join(" ")} Faded rows are outside the current filters.</p>
         </div>

@@ -10,6 +10,7 @@ const COLS = [
   { key: "conviction_score", label: "Conviction score" }, { key: "conviction_rank", label: "Conv. rank" },
   { key: "timeliness_score", label: "Timeliness score" }, { key: "timeliness_rank", label: "Tim. rank" },
   { key: "emergency112_score", label: "112 score" }, { key: "emergency112_rank", label: "112 rank" },
+  { key: "hsp_score", label: "HSP score" }, { key: "hsp_rank", label: "HSP rank" },
   { key: "training_score", label: "Training score" }, { key: "training_rank", label: "Train. rank" },
   { key: "antf_score", label: "ANTF marks" }, { key: "antf_rank", label: "ANTF rank" },
   { key: "combined_score", label: "Combined index" }, { key: "category", label: "Category" },
@@ -20,9 +21,10 @@ function weightLabel(weight) {
     const c = Math.round((weight.conviction ?? 0) * 100);
     const t = Math.round((weight.timeliness ?? 0) * 100);
     const e = Math.round((weight.emergency112 ?? 0) * 100);
+    const h = Math.round((weight.hsp ?? 0) * 100);
     const tr = Math.round((weight.training ?? 0) * 100);
     const a = Math.round((weight.antf ?? 0) * 100);
-    return `${c}% conviction · ${t}% timeliness · ${e}% 112 · ${tr}% training · ${a}% ANTF`;
+    return `${c}% conviction · ${t}% timeliness · ${e}% 112 · ${h}% HSP · ${tr}% training · ${a}% ANTF`;
   }
   const w = Math.round((weight ?? 0.5) * 100);
   return `${w}% conviction / ${100 - w}% other`;
@@ -34,7 +36,7 @@ export default function CombinedIndex() {
   const [all, setAll] = useState(false);
   useEffect(() => { api("get", "/combined").then(setData).catch(() => setData({ rows: [], error: true })); }, [api]);
   if (!data) return <div className="flex items-center gap-2 text-slate-500 py-6"><Loader2 className="h-4 w-4 animate-spin" />Loading combined index…</div>;
-  if (data.error) return <div className="text-sm text-rose-700" data-testid="combined-error">Combined index is unavailable: conviction, timeliness, 112, training, and ANTF datasets must all be active.</div>;
+  if (data.error) return <div className="text-sm text-rose-700" data-testid="combined-error">Combined index is unavailable: conviction, timeliness, 112, training, ANTF, and HSP datasets must all be active.</div>;
   const rows = [...data.rows].sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
   const label = weightLabel(data.weight);
   const win = data.windows || {};
@@ -58,6 +60,8 @@ export default function CombinedIndex() {
                 <td className="px-3 py-2 font-num text-slate-500">{r.timeliness_rank ?? "—"}</td>
                 <td className="px-3 py-2 font-num">{fmt(r.emergency112_score)}</td>
                 <td className="px-3 py-2 font-num text-slate-500">{r.emergency112_rank ?? "—"}</td>
+                <td className="px-3 py-2 font-num">{fmt(r.hsp_score)}</td>
+                <td className="px-3 py-2 font-num text-slate-500">{r.hsp_rank ?? "—"}</td>
                 <td className="px-3 py-2 font-num">{fmt(r.training_score)}</td>
                 <td className="px-3 py-2 font-num text-slate-500">{r.training_rank ?? "—"}</td>
                 <td className="px-3 py-2 font-num">{fmt(r.antf_score)}</td>

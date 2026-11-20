@@ -5,10 +5,17 @@ import { Kpi, Delta } from "@/components/Primitives";
 import { fmt, fmtInt, fmtDuration } from "@/lib/format";
 import { staggerFast } from "@/lib/motion";
 
+function listLabel(v) {
+  if (Array.isArray(v)) return v.length ? (v.length <= 2 ? v.join(", ") : `${v[0]} +${v.length - 1}`) : null;
+  return v && v !== "All" ? v : null;
+}
+
 function selectionLabel(f) {
   const parts = [];
-  if (f.unit && f.unit !== "All") parts.push(f.unit);
-  if (f.range && f.range !== "All") parts.push(f.range);
+  const unit = listLabel(f.unit);
+  const range = listLabel(f.range);
+  if (unit) parts.push(unit);
+  if (range) parts.push(range);
   if (f.category && f.category !== "All") parts.push(f.category);
   return parts.length ? parts.join(" · ") : "Current filter selection";
 }
@@ -30,7 +37,8 @@ export default function KpiRow({ domain, data, f, labels, included }) {
   const w = Math.round((data.weight ?? 0.7) * 100);
   const iw = 100 - w;
   const selName = selectionLabel(f);
-  const singleUnit = f.unit && f.unit !== "All";
+  const singleUnit = Array.isArray(f.unit) ? f.unit.length === 1 : (f.unit && f.unit !== "All");
+  const unitName = Array.isArray(f.unit) ? f.unit[0] : f.unit;
 
   if (domain === "antf") {
     return (
@@ -53,6 +61,35 @@ export default function KpiRow({ domain, data, f, labels, included }) {
             <Kpi testId="kpi-sel-mom" label="MoM uploaded" value={fmtInt(sel.total_mom_uploaded)} sub="NCORD portal" />
             <Kpi testId="kpi-sel-marks" label="Total marks" value={fmtInt(sel.total_marks)} sub="Selected units" accent />
             <Kpi testId="kpi-sel-avg" label="Avg marks" value={fmt(sel.avg_marks, 1)} sub={top && singleUnit ? `Rank #${top.rank} · ${top.category}` : "Selected"} />
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
+
+  if (domain === "hsp") {
+    return (
+      <div className="space-y-5">
+        <div>
+          <RowLabel>Statewide</RowLabel>
+          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3" data-testid="kpi-row">
+            <Kpi testId="kpi-base-accidents" label={`${scope} base accidents`} value={fmtInt(s.base_accidents ?? s.base_den)} sub={f.base} />
+            <Kpi testId="kpi-base-killed" label={`${scope} base killed`} value={fmtInt(s.base_killed ?? s.base_num)} sub={f.base} />
+            <Kpi testId="kpi-latest-accidents" label={`${scope} latest accidents`} value={fmtInt(s.total_accidents ?? s.latest_den)} sub={f.latest} accent />
+            <Kpi testId="kpi-latest-killed" label={`${scope} latest killed`} value={fmtInt(s.total_killed ?? s.latest_num)} sub={f.latest} accent />
+            <Kpi testId="kpi-avg-score" label="Avg final score" value={fmt(s.avg_overall_score)} sub={`${fmtInt(s.scored_count)} units`} />
+            <Kpi testId="kpi-units" label="Units" value={fmtInt(s.unit_count)} sub={top ? `#1 ${top.unit}` : scope} />
+          </motion.div>
+        </div>
+        <div>
+          <RowLabel>Selection</RowLabel>
+          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3" data-testid="kpi-unit-row">
+            <Kpi testId="kpi-sel-units" label="Units" value={fmtInt(sel.unit_count)} sub={selName} />
+            <Kpi testId="kpi-sel-accidents" label="Latest accidents" value={fmtInt(sel.total_accidents ?? sel.latest_den)} sub={f.latest} />
+            <Kpi testId="kpi-sel-killed" label="Latest killed" value={fmtInt(sel.total_killed ?? sel.latest_num)} sub={f.latest} />
+            <Kpi testId="kpi-sel-injured" label="Latest injured" value={fmtInt(sel.total_injured)} sub={f.latest} />
+            <Kpi testId="kpi-sel-score" label="Avg final score" value={fmt(sel.avg_overall_score)} sub="Selected" accent />
+            <Kpi testId="kpi-sel-top" label="Top unit" value={top ? `#${top.rank}` : "—"} sub={top ? `${top.unit} · ${top.category}` : selName} />
           </motion.div>
         </div>
       </div>
@@ -197,7 +234,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
           <Kpi testId="kpi-unit-count" label="Units" value={fmtInt(sel.unit_count)} sub={selName}
             formula={{ description: "Number of units included by the current Unit / Range / Rank category filters.", expression: "COUNT of units where Include = 1", example: `${fmtInt(sel.unit_count)} unit${sel.unit_count === 1 ? "" : "s"} · ${selName}` }} />
           <Kpi testId="kpi-unit-base-den" label={`Base ${labels.den.toLowerCase()}`} value={fmtInt(sel.base_den)} sub={f.base}
-            formula={{ description: `Sum of ${labels.den.toLowerCase()} for the filtered selection in the base period.`, expression: `Σ ${labels.den} over selected units (base)`, example: `${singleUnit ? f.unit : selName}: ${fmtInt(sel.base_den)}` }} />
+            formula={{ description: `Sum of ${labels.den.toLowerCase()} for the filtered selection in the base period.`, expression: `Σ ${labels.den} over selected units (base)`, example: `${singleUnit ? unitName : selName}: ${fmtInt(sel.base_den)}` }} />
           <Kpi testId="kpi-unit-base-num" label={`Base ${labels.num.toLowerCase()}`} value={fmtInt(sel.base_num)} sub={domain === "timeliness" ? `Beyond time: ${fmtInt(sel.base_beyond)}` : f.base}
             formula={{ description: `Sum of ${labels.num.toLowerCase()} for the filtered selection in the base period.`, expression: `Σ ${labels.num} over selected units (base)`, example: domain === "timeliness" ? `${fmtInt(sel.base_num)} within time · ${fmtInt(sel.base_beyond)} beyond time` : `${fmtInt(sel.base_num)}` }} />
           <Kpi testId="kpi-unit-base-rate" label={`Base ${labels.rate.toLowerCase()}`} value={`${fmt(sel.base_rate)}%`} sub={f.base}

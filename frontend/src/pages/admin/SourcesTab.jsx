@@ -43,7 +43,7 @@ export default function SourcesTab() {
           <Input placeholder="Source name (e.g. CCTNS aggregate feed)" value={form.name} onChange={set("name")} className="rounded-sm" data-testid="source-name-input" />
           <Input placeholder="https://source.example.gov/api/conviction" value={form.url} onChange={set("url")} className="rounded-sm" data-testid="source-url-input" />
           <select value={form.domain} onChange={set("domain")} className="w-full h-9 border rounded-sm px-2 text-sm bg-white" data-testid="source-domain-select">
-            <option value="conviction">Conviction</option><option value="timeliness">Charge Sheet Timeliness</option><option value="emergency112">112 Performance</option><option value="training">Training Performance</option><option value="antf">ANTF Meetings</option>
+            <option value="conviction">Conviction</option><option value="timeliness">Charge Sheet Timeliness</option><option value="emergency112">112 Performance</option><option value="hsp">HSP Performance</option><option value="training">Training Performance</option><option value="antf">ANTF Meetings</option>
           </select>
           <select value={form.schedule} onChange={set("schedule")} className="w-full h-9 border rounded-sm px-2 text-sm bg-white" data-testid="source-schedule-select">
             <option value="daily">Sync automatically every day (6:00 IST)</option><option value="manual">Manual sync only</option>

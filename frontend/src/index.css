@@ -102,6 +102,54 @@ body {
     box-shadow: inset 3px 0 0 0 hsl(var(--brand-accent));
 }
 
+/* Base-period KPI — light khaki + ink navy figure */
+.kpi-base {
+    background: #F2EADB !important;
+    box-shadow:
+        inset 3px 0 0 0 #C4A574,
+        inset 0 1px 0 hsl(0 0% 100% / 0.85),
+        0 1px 2px hsl(215 28% 12% / 0.04);
+}
+.kpi-base .kpi-figure {
+    color: #182A40 !important;
+}
+
+/* Latest-period KPI — deep navy + white figure */
+.kpi-latest {
+    background: #17345C !important;
+    border-color: #17345C !important;
+    box-shadow:
+        inset 3px 0 0 0 #3B6EA5,
+        inset 0 1px 0 hsl(0 0% 100% / 0.08),
+        0 1px 2px hsl(215 28% 12% / 0.08);
+}
+.kpi-latest .kpi-label,
+.kpi-latest .kpi-sub {
+    color: rgba(255, 255, 255, 0.72) !important;
+}
+.kpi-latest .kpi-figure {
+    color: #FFFFFF !important;
+}
+.kpi-latest .kpi-info-btn {
+    border-color: rgba(255, 255, 255, 0.28) !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: rgba(255, 255, 255, 0.8) !important;
+}
+.kpi-latest .kpi-info-btn:hover {
+    border-color: rgba(255, 255, 255, 0.45) !important;
+    background: rgba(255, 255, 255, 0.14) !important;
+    color: #FFFFFF !important;
+}
+
+/* Rate-change / improvement KPI — white + crimson figure */
+.kpi-change {
+    background: #FFFFFF !important;
+}
+.kpi-change .kpi-figure,
+.kpi-change .kpi-figure * {
+    color: #B4233C !important;
+}
+
 .rise { animation: rise .45s cubic-bezier(.2,.7,.2,1) both; }
 .fade { animation: fade .4s ease both; }
 .bar-grow { animation: barGrow .7s cubic-bezier(.2,.7,.2,1) both; transform-origin: left center; }

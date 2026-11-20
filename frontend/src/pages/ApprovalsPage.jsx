@@ -41,6 +41,14 @@ const Diff = ({ current, proposed }) => (
           after={[...(proposed.training.ranking_bands || []).map((b) => `≥${b.min_pct}% → ${b.marks}`), `otherwise → ${proposed.training.default_marks ?? 0}`]}
         />
       )}
+      {current.hsp && proposed.hsp && (
+        <Row
+          key="hsp-weights"
+          label="HSP score weights"
+          before={`perf ${Math.round((current.hsp.perf_weight ?? 0.7) * 100)}% · acc/kill ${Math.round((current.hsp.accident_perf_weight ?? 0.3) * 100)}/${Math.round((current.hsp.killed_perf_weight ?? 0.7) * 100)}`}
+          after={`perf ${Math.round((proposed.hsp.perf_weight ?? 0.7) * 100)}% · acc/kill ${Math.round((proposed.hsp.accident_perf_weight ?? 0.3) * 100)}/${Math.round((proposed.hsp.killed_perf_weight ?? 0.7) * 100)}`}
+        />
+      )}
       {current.antf && proposed.antf && (
         <Row
           key="antf-marks"
@@ -52,8 +60,8 @@ const Diff = ({ current, proposed }) => (
       <Row label="Rank categories" before={rankText(current)} after={rankText(proposed)} />
       <Row
         label="Combined index weight"
-        before={current.combined_weights ? `${Math.round(current.combined_weights.conviction * 100)}/${Math.round(current.combined_weights.timeliness * 100)}/${Math.round((current.combined_weights.emergency112 || 0) * 100)}/${Math.round((current.combined_weights.training || 0) * 100)}/${Math.round((current.combined_weights.antf || 0) * 100)}` : `${Math.round((current.combined_weight ?? 0.5) * 100)}% conviction`}
-        after={proposed.combined_weights ? `${Math.round(proposed.combined_weights.conviction * 100)}/${Math.round(proposed.combined_weights.timeliness * 100)}/${Math.round((proposed.combined_weights.emergency112 || 0) * 100)}/${Math.round((proposed.combined_weights.training || 0) * 100)}/${Math.round((proposed.combined_weights.antf || 0) * 100)}` : `${Math.round((proposed.combined_weight ?? 0.5) * 100)}% conviction`}
+        before={current.combined_weights ? `${Math.round(current.combined_weights.conviction * 100)}/${Math.round(current.combined_weights.timeliness * 100)}/${Math.round((current.combined_weights.emergency112 || 0) * 100)}/${Math.round((current.combined_weights.hsp || 0) * 100)}/${Math.round((current.combined_weights.training || 0) * 100)}/${Math.round((current.combined_weights.antf || 0) * 100)}` : `${Math.round((current.combined_weight ?? 0.5) * 100)}% conviction`}
+        after={proposed.combined_weights ? `${Math.round(proposed.combined_weights.conviction * 100)}/${Math.round(proposed.combined_weights.timeliness * 100)}/${Math.round((proposed.combined_weights.emergency112 || 0) * 100)}/${Math.round((proposed.combined_weights.hsp || 0) * 100)}/${Math.round((proposed.combined_weights.training || 0) * 100)}/${Math.round((proposed.combined_weights.antf || 0) * 100)}` : `${Math.round((proposed.combined_weight ?? 0.5) * 100)}% conviction`}
       />
     </tbody>
   </table>

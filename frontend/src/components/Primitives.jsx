@@ -39,7 +39,13 @@ export const Panel = ({ title, subtitle, right, children, className = "", testId
   </motion.section>
 );
 
-export const Kpi = ({ label, value, sub, accent, testId, formula }) => (
+export const Kpi = ({ label, value, sub, accent, tone, testId, formula }) => {
+  const isBase = tone === "base" || (typeof testId === "string" && /(^|-)base(-|$)/.test(testId));
+  const isLatest = tone === "latest" || (typeof testId === "string" && /(^|-)latest(-|$)/.test(testId));
+  const isChange =
+    tone === "change" ||
+    (typeof testId === "string" && /(^|-)(improvement|improv|time-imp|pct-imp)(-|$)/.test(testId));
+  return (
   <motion.div
     variants={fadeUp}
     initial="hidden"
@@ -48,7 +54,10 @@ export const Kpi = ({ label, value, sub, accent, testId, formula }) => (
     data-testid={testId}
     className={cn(
       "surface-panel rounded-sm px-4 py-3.5 relative overflow-visible h-full flex flex-col transition-shadow duration-200 hover:shadow-md hover:shadow-slate-900/5",
-      accent && "kpi-accent-rail border-l-transparent",
+      accent && !isBase && !isLatest && !isChange && "kpi-accent-rail",
+      isBase && "kpi-base",
+      isLatest && !isBase && "kpi-latest",
+      isChange && !isBase && !isLatest && "kpi-change",
     )}
   >
     {formula && (
@@ -58,7 +67,7 @@ export const Kpi = ({ label, value, sub, accent, testId, formula }) => (
             type="button"
             data-testid={testId ? `${testId}-info` : undefined}
             aria-label={`How ${label} is calculated`}
-            className="absolute top-2 right-2 z-10 h-6 w-6 inline-flex items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-500 hover:text-brand-navy hover:border-teal-600 hover:bg-teal-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600/50 transition-colors"
+            className="kpi-info-btn absolute top-2 right-2 z-10 h-6 w-6 inline-flex items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-500 hover:text-brand-navy hover:border-teal-600 hover:bg-teal-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600/50 transition-colors"
           >
             <Info className="h-3.5 w-3.5" strokeWidth={2.25} />
           </button>
@@ -82,11 +91,12 @@ export const Kpi = ({ label, value, sub, accent, testId, formula }) => (
         </PopoverContent>
       </Popover>
     )}
-    <div className="text-[10.5px] uppercase tracking-[0.12em] font-semibold text-slate-500 leading-snug h-[2.75rem] overflow-hidden pr-7">{label}</div>
-    <div className="font-num text-2xl font-semibold text-slate-900 mt-2 tracking-tight leading-none h-8 flex items-end">{value}</div>
-    <div className="text-[11px] text-slate-500 mt-1.5 min-h-[2.5rem] leading-snug">{sub || "\u00A0"}</div>
+    <div className="kpi-label text-[10.5px] uppercase tracking-[0.12em] font-semibold text-slate-500 leading-snug h-[2.75rem] overflow-hidden pr-7">{label}</div>
+    <div className="kpi-figure font-num text-2xl font-semibold text-slate-900 mt-2 tracking-tight leading-none h-8 flex items-end">{value}</div>
+    <div className="kpi-sub text-[11px] text-slate-500 mt-1.5 min-h-[2.5rem] leading-snug">{sub || "\u00A0"}</div>
   </motion.div>
-);
+  );
+};
 
 export const Delta = ({ value, suffix = " pp", invert = false, testId }) => {
   if (value === null || value === undefined) return <span data-testid={testId}>—</span>;

@@ -32,11 +32,12 @@ export default function TrendsPage() {
       api("get", "/meta", { params: { domain: "conviction" } }),
       api("get", "/meta", { params: { domain: "timeliness" } }),
       api("get", "/meta", { params: { domain: "emergency112" } }).catch(() => null),
+      api("get", "/meta", { params: { domain: "hsp" } }).catch(() => null),
       api("get", "/meta", { params: { domain: "training" } }).catch(() => null),
       api("get", "/meta", { params: { domain: "antf" } }).catch(() => null),
     ])
-      .then(([c, t, e112, tr, antf]) => {
-        setMeta({ c, t, e112, tr, antf });
+      .then(([c, t, e112, hsp, tr, antf]) => {
+        setMeta({ c, t, e112, hsp, tr, antf });
         setSel({ unit: c.units[0], conv_type: c.types[c.types.length - 1], tim_type: t.types[t.types.length - 1] });
       })
       .catch((e) => setError(errMsg(e)));
@@ -56,6 +57,7 @@ export default function TrendsPage() {
     { key: "conviction", label: "Conviction rate %" }, { key: "conviction_benchmark", label: `Conviction ${bench} %` },
     { key: "timeliness", label: "Within-time rate %" }, { key: "timeliness_benchmark", label: `Within-time ${bench} %` },
     { key: "emergency112", label: "112 % ≤100m" }, { key: "emergency112_benchmark", label: `112 ${bench} %` },
+    { key: "hsp", label: "HSP killed / accidents %" }, { key: "hsp_benchmark", label: `HSP ${bench} %` },
     { key: "training", label: "% people trained" }, { key: "training_benchmark", label: `Training ${bench} %` },
     { key: "antf", label: "ANTF MoM / meetings %" }, { key: "antf_benchmark", label: `ANTF ${bench} %` },
   ];
@@ -72,13 +74,14 @@ export default function TrendsPage() {
         <Pick label="Conviction case type" value={sel.conv_type} onChange={upd("conv_type")} options={meta.c.types} testId="trend-conv-type-select" />
         <Pick label="Timeliness case type" value={sel.tim_type} onChange={upd("tim_type")} options={meta.t.types} testId="trend-tim-type-select" />
       </div>
-      <Panel testId="trend-chart-panel" title={`${sel.unit} · conviction, timeliness, 112, training, ANTF`}
+      <Panel testId="trend-chart-panel" title={`${sel.unit} · conviction, timeliness, 112, HSP, training, ANTF`}
         subtitle={`Half-year, monthly, quarter, and YTD periods · dashed lines = ${bench.toLowerCase()}`}
         right={data && <ExportMenu title={`Trend - ${sel.unit}`} view="trend" columns={cols} rows={data.points} context={{ Unit: sel.unit, "Conviction type": sel.conv_type, "Timeliness type": sel.tim_type }} testId="trend-export" />}>
         {!data ? <div className="h-[380px] flex items-center justify-center text-slate-500"><Loader2 className="h-5 w-5 animate-spin" /></div> : (
           <>
             {!data.matched.timeliness && <div className="mb-3 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="trend-no-timeliness"><Info className="h-4 w-4" />This unit has no matching record in the timeliness data.</div>}
             {!data.matched.emergency112 && <div className="mb-3 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="trend-no-112"><Info className="h-4 w-4" />This unit has no matching record in the 112 data.</div>}
+            {!data.matched.hsp && <div className="mb-3 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="trend-no-hsp"><Info className="h-4 w-4" />This unit has no matching record in the HSP data.</div>}
             {!data.matched.training && <div className="mb-3 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="trend-no-training"><Info className="h-4 w-4" />This unit has no matching record in the training data.</div>}
             {!data.matched.antf && <div className="mb-3 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="trend-no-antf"><Info className="h-4 w-4" />This unit has no matching record in the ANTF meetings data.</div>}
             <div style={{ height: 380 }}>
@@ -95,6 +98,8 @@ export default function TrendsPage() {
                   <Line type="linear" dataKey="timeliness_benchmark" name={`Within-time · ${bench}`} stroke={CHART.amber} strokeDasharray="5 5" strokeWidth={1.5} dot={false} connectNulls isAnimationActive animationDuration={CHART.animationDuration} />
                   <Line type="linear" dataKey="emergency112" name="112 % ≤100m" stroke="#0F766E" strokeWidth={2.5} dot={{ r: 4 }} connectNulls isAnimationActive animationDuration={CHART.animationDuration} />
                   <Line type="linear" dataKey="emergency112_benchmark" name={`112 · ${bench}`} stroke="#0F766E" strokeDasharray="5 5" strokeWidth={1.5} dot={false} connectNulls isAnimationActive animationDuration={CHART.animationDuration} />
+                  <Line type="linear" dataKey="hsp" name="HSP killed / accidents %" stroke="#C2410C" strokeWidth={2.5} dot={{ r: 4 }} connectNulls isAnimationActive animationDuration={CHART.animationDuration} />
+                  <Line type="linear" dataKey="hsp_benchmark" name={`HSP · ${bench}`} stroke="#C2410C" strokeDasharray="5 5" strokeWidth={1.5} dot={false} connectNulls isAnimationActive animationDuration={CHART.animationDuration} />
                   <Line type="linear" dataKey="training" name="% people trained" stroke="#7C3AED" strokeWidth={2.5} dot={{ r: 4 }} connectNulls isAnimationActive animationDuration={CHART.animationDuration} />
                   <Line type="linear" dataKey="training_benchmark" name={`Training · ${bench}`} stroke="#7C3AED" strokeDasharray="5 5" strokeWidth={1.5} dot={false} connectNulls isAnimationActive animationDuration={CHART.animationDuration} />
                   <Line type="linear" dataKey="antf" name="ANTF MoM / meetings %" stroke="#BE123C" strokeWidth={2.5} dot={{ r: 4 }} connectNulls isAnimationActive animationDuration={CHART.animationDuration} />

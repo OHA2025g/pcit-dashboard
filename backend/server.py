@@ -30,9 +30,9 @@ try:
     from backend.auth import auth_router, bind_auth, bootstrap_admin, require_user
     from backend.scoring import (
         DOMAINS, DEFAULT_POLICY, CATEGORIES, categories_for, score_units, totals, explain, enrich, combine,
-        combined_weights,
+        combined_weights, _norm_unit,
     )
-    from backend.workbook import parse_workbook, WorkbookError
+    from backend.workbook import parse_workbook, WorkbookError, _normalize_range
     from backend.emailer import send_email
     from backend.reports import build_section, render_pdf, render_email, render_explain_email
 except ModuleNotFoundError:
@@ -41,9 +41,9 @@ except ModuleNotFoundError:
     from reports import build_section, render_pdf, render_email, render_explain_email
     from scoring import (
         DOMAINS, DEFAULT_POLICY, CATEGORIES, categories_for, score_units, totals, explain, enrich, combine,
-        combined_weights,
+        combined_weights, _norm_unit,
     )
-    from workbook import parse_workbook, WorkbookError
+    from workbook import parse_workbook, WorkbookError, _normalize_range
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -142,7 +142,7 @@ def scope_range(member: dict) -> Optional[str]:
     if member["role"] == "range_viewer":
         if not member.get("range"):
             raise HTTPException(status_code=403, detail="No range assigned to your account yet")
-        return member["range"]
+        return _normalize_range(member["range"])
     return None
 
 
@@ -155,7 +155,7 @@ def _merge_policy(stored: dict | None) -> dict:
     if not stored:
         return policy
     for key, val in stored.items():
-        if key in ("conviction", "timeliness", "emergency112", "training", "antf") and isinstance(val, dict):
+        if key in ("conviction", "timeliness", "emergency112", "hsp", "training", "antf") and isinstance(val, dict):
             policy[key] = {**policy.get(key, {}), **val}
         elif key == "combined_weights" and isinstance(val, dict):
             policy["combined_weights"] = {**policy.get("combined_weights", {}), **val}
@@ -178,17 +178,72 @@ async def active_dataset(domain: str) -> dict:
     return ds
 
 
+async def _conviction_range_by_unit() -> dict:
+    """Normalized conviction unit name → police range (from active conviction dataset)."""
+    try:
+        cds = await active_dataset("conviction")
+    except HTTPException:
+        return {}
+    if cds["id"] not in _cache:
+        facts = await db.facts.find({"dataset_id": cds["id"]}, {"_id": 0}).to_list(20000)
+        by_type: dict = {}
+        for f in facts:
+            f = {**f, "range": _normalize_range(f.get("range", ""))}
+            t = by_type.setdefault(f["type"], {"facts": {}, "units": []})
+            if (f["unit"], f["range"]) not in t["units"]:
+                t["units"].append((f["unit"], f["range"]))
+            t["facts"][(f["unit"], f["period"])] = f
+        _cache[cds["id"]] = by_type
+    entry = next(iter(_cache[cds["id"]].values()), None)
+    if not entry:
+        return {}
+    return {_norm_unit(u): r for u, r in entry["units"] if r}
+
+
+async def _attach_ranges_from_conviction(by_type: dict, unit_map: dict) -> None:
+    """Domains whose workbooks omit Range — map units to conviction ranges via unit_map (conv → domain)."""
+    conv = await _conviction_range_by_unit()
+    if not conv:
+        return
+    domain_to_range = dict(conv)  # same-name units (Akola, Raigad, …)
+    for conv_unit, domain_unit in unit_map.items():
+        rng = conv.get(_norm_unit(conv_unit))
+        if rng:
+            domain_to_range[_norm_unit(domain_unit)] = rng
+    for entry in by_type.values():
+        rebuilt = []
+        seen = set()
+        for unit, rng in entry["units"]:
+            if not rng:
+                rng = domain_to_range.get(_norm_unit(unit), "")
+            key = (unit, rng)
+            if key not in seen:
+                seen.add(key)
+                rebuilt.append((unit, rng))
+        entry["units"] = rebuilt
+        for fact in entry["facts"].values():
+            if not fact.get("range"):
+                fact["range"] = domain_to_range.get(_norm_unit(fact["unit"]), "")
+
+
 async def load_facts(ds: dict) -> dict:
-    if ds["id"] in _cache:
-        return _cache[ds["id"]]
-    facts = await db.facts.find({"dataset_id": ds["id"]}, {"_id": 0}).to_list(20000)
-    by_type: dict = {}
-    for f in facts:
-        t = by_type.setdefault(f["type"], {"facts": {}, "units": []})
-        if (f["unit"], f["range"]) not in t["units"]:
-            t["units"].append((f["unit"], f["range"]))
-        t["facts"][(f["unit"], f["period"])] = f
-    _cache[ds["id"]] = by_type
+    if ds["id"] not in _cache:
+        facts = await db.facts.find({"dataset_id": ds["id"]}, {"_id": 0}).to_list(20000)
+        by_type: dict = {}
+        for f in facts:
+            f = {**f, "range": _normalize_range(f.get("range", ""))}
+            t = by_type.setdefault(f["type"], {"facts": {}, "units": []})
+            if (f["unit"], f["range"]) not in t["units"]:
+                t["units"].append((f["unit"], f["range"]))
+            t["facts"][(f["unit"], f["period"])] = f
+        _cache[ds["id"]] = by_type
+    by_type = _cache[ds["id"]]
+    # 112 / HSP (and similar) workbooks omit Range — attach from conviction on load
+    domain = ds.get("domain")
+    if domain == "hsp":
+        await _attach_ranges_from_conviction(by_type, UNIT_MAP_HSP)
+    elif domain == "emergency112":
+        await _attach_ranges_from_conviction(by_type, UNIT_MAP_112)
     return by_type
 
 
@@ -255,7 +310,7 @@ async def meta(domain: str, member: dict = Depends(viewer)):
     ranges = sorted({r for _, r in first if not rng or r == rng})
     b, l = default_periods(ds)
     cats = categories_for(domain)
-    if domain in ("emergency112", "training", "antf"):
+    if domain in ("emergency112", "training", "antf", "hsp"):
         ranges = [r for r in ranges if r]
     return {"domain": domain, "labels": DOMAINS[domain], "types": ds["types"], "periods": ds["periods"],
             "units": units, "ranges": ranges, "unit_ranges": unit_ranges, "categories": cats,
@@ -263,13 +318,27 @@ async def meta(domain: str, member: dict = Depends(viewer)):
             "dataset": {k: ds[k] for k in ("id", "filename", "source", "uploaded_at", "uploaded_by", "record_count", "unit_count")}}
 
 
+def _filter_set(raw: str) -> set | None:
+    """Parse 'All' or comma-separated values into a set. None means no filter (All)."""
+    if not raw or raw == "All":
+        return None
+    parts = [p.strip() for p in str(raw).split(",") if p.strip() and p.strip() != "All"]
+    return set(parts) or None
+
+
 @api_router.get("/dashboard")
 async def dashboard(domain: str, type: str, base: str, latest: str, unit: str = "All", range: str = "All",
                     category: str = "All", member: dict = Depends(viewer)):
     ds, policy, rows, cohort, rng = await compute(domain, type, base, latest, member)
+    unit_filter = _filter_set(unit)
+    range_raw = _filter_set(range)
+    range_filter = {_normalize_range(v) for v in range_raw} if range_raw is not None else None
     for r in rows:
-        r["included"] = ((unit == "All" or r["unit"] == unit) and (range == "All" or r["range"] == range)
-                         and (category == "All" or r["category"] == category))
+        r["included"] = (
+            (unit_filter is None or r["unit"] in unit_filter)
+            and (range_filter is None or r["range"] in range_filter)
+            and (category == "All" or r["category"] == category)
+        )
     included = [r for r in rows if r["included"]]
     weight = policy.get(domain, {}).get("perf_weight", cohort.get("weight", 1.0))
     return {"state": {**totals(domain, rows), **{k: v for k, v in cohort["extras"].items() if k.startswith("state_")}},
@@ -342,7 +411,7 @@ async def overview(member: dict = Depends(viewer)):
         scored = sorted([r for r in rows if r["rank"]], key=lambda r: r["rank"])
         cats = categories_for(domain)
         dist = {c: sum(1 for r in rows if r["category"] == c) for c in cats}
-        range_stats = [x for x in range_stats if x["range"] or domain not in ("emergency112", "training", "antf")]
+        range_stats = [x for x in range_stats if x["range"] or domain not in ("emergency112", "training", "antf", "hsp")]
         out[domain] = {"type": type_, "base": b, "latest": l, "totals": totals(domain, rows),
                        "top": scored[:5], "bottom": scored[-5:][::-1], "distribution": dist,
                        "ranges": sorted(range_stats, key=lambda x: -(x["avg_overall_score"] or 0)),
@@ -364,14 +433,14 @@ async def combined(member: dict = Depends(viewer)):
         type_ = ds["types"][-1]
         rows, _ = score_units(domain, data[type_]["facts"], data[type_]["units"], b, l, policy)
         parts[domain] = {"rows": rows, "type": type_, "base": b, "latest": l}
-    needed = ("conviction", "timeliness", "emergency112", "training", "antf")
+    needed = ("conviction", "timeliness", "emergency112", "hsp", "training", "antf")
     if any(d not in parts for d in needed):
         return {"error": "combined_requires_all_domains", "rows": [], "weight": combined_weights(policy),
                 "policy_version": policy.get("version"), "windows": {}}
     rows, w = combine(
         parts["conviction"]["rows"], parts["timeliness"]["rows"],
-        parts["emergency112"]["rows"], parts["training"]["rows"], parts["antf"]["rows"],
-        UNIT_MAP, UNIT_MAP_112, UNIT_MAP_TRAINING, UNIT_MAP_ANTF, policy,
+        parts["emergency112"]["rows"], parts["training"]["rows"], parts["antf"]["rows"], parts["hsp"]["rows"],
+        UNIT_MAP, UNIT_MAP_112, UNIT_MAP_TRAINING, UNIT_MAP_ANTF, UNIT_MAP_HSP, policy,
     )
     rng = scope_range(member)
     if rng:
@@ -458,6 +527,7 @@ class CombinedWeights(BaseModel):
     conviction: float = Field(ge=0, le=1)
     timeliness: float = Field(ge=0, le=1)
     emergency112: float = Field(ge=0, le=1)
+    hsp: float = Field(ge=0, le=1)
     training: float = Field(ge=0, le=1)
     antf: float = Field(ge=0, le=1)
 
@@ -481,10 +551,21 @@ class AntfPolicy(BaseModel):
     rank_default: str = "Low Performer"
 
 
+class HspPolicy(BaseModel):
+    perf_weight: float = Field(default=0.7, ge=0, le=1)
+    accident_perf_weight: float = Field(default=0.3, ge=0, le=1)
+    killed_perf_weight: float = Field(default=0.7, ge=0, le=1)
+    accident_imp_weight: float = Field(default=0.2, ge=0, le=1)
+    killed_imp_weight: float = Field(default=0.7, ge=0, le=1)
+    rank_bands: List[RankBand]
+    rank_default: str = "Poor"
+
+
 class PolicyIn(BaseModel):
     conviction: DomainPolicy
     timeliness: DomainPolicy
     emergency112: DomainPolicy
+    hsp: HspPolicy
     training: TrainingPolicy
     antf: AntfPolicy
     rank_bands: List[RankBand]
@@ -526,6 +607,8 @@ async def update_policy(body: PolicyIn, member: dict = Depends(admin_only)):
         raise HTTPException(status_code=422, detail="training: at least one ranking band is required")
     if not data["antf"]["rank_bands"]:
         raise HTTPException(status_code=422, detail="antf: at least one rank band is required")
+    if not data["hsp"]["rank_bands"]:
+        raise HTTPException(status_code=422, detail="hsp: at least one rank band is required")
     # Preserve Scale extras (time/pct weights, score categories) not edited in DomainPolicy form
     cur = await get_policy()
     for extra in ("time_weight", "pct_weight", "score_bands", "score_default"):
@@ -660,7 +743,7 @@ async def list_audit(action: str = "All", limit: int = Query(200, ge=1, le=1000)
 class SourceIn(BaseModel):
     name: str = Field(min_length=1)
     url: str = Field(pattern="^https?://")
-    domain: str = Field(pattern="^(conviction|timeliness|emergency112|training|antf)$")
+    domain: str = Field(pattern="^(conviction|timeliness|emergency112|training|antf|hsp)$")
     auth_header: str = ""
     auth_value: str = ""
     schedule: str = Field(default="manual", pattern="^(manual|daily)$")
@@ -708,7 +791,7 @@ def _parse_api_payload(payload, domain):
     facts = []
     for i, x in enumerate(recs):
         try:
-            facts.append({"unit": str(x["unit"]), "range": str(x.get("range", "")), "type": str(x["type"]),
+            facts.append({"unit": str(x["unit"]), "range": _normalize_range(x.get("range", "")), "type": str(x["type"]),
                           "period": str(x["period"]), "den": float(x["denominator"]), "num": float(x["numerator"]),
                           "beyond": float(x.get("beyond", 0) or 0)})
         except (KeyError, TypeError, ValueError) as e:
@@ -786,7 +869,8 @@ UNIT_MAP = {
 UNIT_MAP_112 = {
     "Ahmednagar": "Ahilyanagar", "Amravati (C)": "Amravati City", "Amravati (R)": "Amravati Rural",
     "Chh. Sambhaji N. (C)": "Chatrapati Sambhajinagar", "Chh. Sambhaji N. (R)": "Chhatrapati Sambhajinagar Rural",
-    "Mira Bhyander V.V. (C)": "MiraBhayander", "Nagpur (C)": "Nagpur City", "Nagpur (R)": "Nagpur Rural",
+    "Mira Bhyander V.V. (C)": "MiraBhayander", "Mumbai (C)": "Mumbai City",
+    "Nagpur (C)": "Nagpur City", "Nagpur (R)": "Nagpur Rural", "Nagpur Rural": "Nagpur Rural",
     "Nasik (C)": "Nashik City", "Nasik (R)": "Nashik Rural", "Navi Mumbai (C)": "Navi Mumbai",
     "Pimpri Chinchwad (C)": "Pimpri Chinchwad", "Pune (C)": "Pune City", "Pune (R)": "Pune Rural",
     "Solapur (C)": "Solapur City", "Solapur (R)": "Solapur Rural", "Thane (C)": "Thane City", "Thane (R)": "Thane Rural",
@@ -813,6 +897,20 @@ UNIT_MAP_ANTF = {
     "Nasik (C)": "Nashik", "Nasik (R)": "Nashik", "Pune (C)": "Pune", "Pune (R)": "Pune",
     "Solapur (C)": "Solapur", "Solapur (R)": "Solapur", "Thane (C)": "Thane", "Thane (R)": "Thane",
     "Aurangabad": "Aurangabad", "Osmanabad": "Osmanabad",
+}
+
+# Conviction unit → HSP Quaterly unit
+UNIT_MAP_HSP = {
+    "Ahmednagar": "Ahilyanagar", "Amravati (C)": "Amravati City", "Amravati (R)": "Amaravati ®",
+    "Chh. Sambhaji N. (C)": "C.S.Nagarcity", "Chh. Sambhaji N. (R)": "C.S.Nagar®",
+    "Mira Bhyander V.V. (C)": "MB-VV", "Mumbai (C)": "Mumbai city",
+    "Nagpur (C)": "Nagpur city", "Nagpur (R)": "Nagpur ®", "Nagpur Rural": "Nagpur ®",
+    "Nasik (C)": "Nasik city", "Nasik (R)": "Nasik ®",
+    "Navi Mumbai (C)": "Navi Mumbai", "Pimpri Chinchwad (C)": "PCPC",
+    "Pune (C)": "Pune city", "Pune (R)": "Pune ®",
+    "Solapur (C)": "Solapur city", "Solapur (R)": "Solapur ®",
+    "Thane (C)": "Thane city", "Thane (R)": "Thane ®",
+    "Osmanabad": "Dharashiv", "Beed": "Beed",
 }
 
 _MONTH_ORD = {m: i for i, m in enumerate(
@@ -858,14 +956,14 @@ def _series_112(entry: dict, unit: Optional[str], periods: list, scope_units: li
 async def trend(unit: str, conv_type: str, tim_type: str, member: dict = Depends(viewer)):
     rng = scope_range(member)
     out, units_meta = {}, {}
-    for domain, type_ in (("conviction", conv_type), ("timeliness", tim_type), ("emergency112", "All"), ("training", "All"), ("antf", "All")):
+    for domain, type_ in (("conviction", conv_type), ("timeliness", tim_type), ("emergency112", "All"), ("hsp", "All"), ("training", "All"), ("antf", "All")):
         try:
             ds = await active_dataset(domain)
         except HTTPException:
             continue
         data = await load_facts(ds)
         if type_ not in data:
-            if domain in ("emergency112", "training", "antf"):
+            if domain in ("emergency112", "training", "antf", "hsp"):
                 continue
             raise HTTPException(status_code=400, detail=f"Unknown {domain} case type")
         entry = data[type_]
@@ -880,8 +978,10 @@ async def trend(unit: str, conv_type: str, tim_type: str, member: dict = Depends
             name = UNIT_MAP_112.get(unit, unit)
         elif domain == "training":
             name = UNIT_MAP_TRAINING.get(unit, unit)
-        else:
+        elif domain == "antf":
             name = UNIT_MAP_ANTF.get(unit, unit)
+        else:
+            name = UNIT_MAP_HSP.get(unit, unit)
         matched = name if name in scope_units else next((u for u in scope_units if u.lower() == name.lower()), None)
         units_meta[domain] = matched
         if domain == "emergency112":
@@ -895,7 +995,7 @@ async def trend(unit: str, conv_type: str, tim_type: str, member: dict = Depends
     points = []
     for p in periods:
         pt = {"period": p}
-        for domain in ("conviction", "timeliness", "emergency112", "training", "antf"):
+        for domain in ("conviction", "timeliness", "emergency112", "hsp", "training", "antf"):
             if domain not in out:
                 pt[domain] = None
                 pt[f"{domain}_benchmark"] = None
@@ -1051,6 +1151,7 @@ async def seed_datasets():
         ("conviction", "conviction.xlsm", "conviction_Final Dashboard_v3.xlsm"),
         ("timeliness", "timeliness.xlsm", "timeliness_Final Dashboard_v3.xlsm"),
         ("emergency112", "emergency112.xlsm", "Dashboard 112_V2.xlsm"),
+        ("hsp", "hsp.xlsm", "Consilidated HSP Data_v3.xlsm"),
         ("training", "training.xlsm", "Training Data v2.xlsm"),
         ("antf", "antf.xlsx", "ANTF Meetings Conducted Dashboard.xlsx"),
     )

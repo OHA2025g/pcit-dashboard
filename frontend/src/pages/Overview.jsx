@@ -11,11 +11,11 @@ import CombinedIndex from "@/components/CombinedIndex";
 import { fadeUp, staggerContainer, staggerFast } from "@/lib/motion";
 import { CHART } from "@/lib/chartTheme";
 
-const DOMAIN_ORDER = ["conviction", "timeliness", "emergency112", "training", "antf"];
-const TITLES = { conviction: "Conviction", timeliness: "Charge Sheet Timeliness", emergency112: "112 Performance", training: "Training Performance", antf: "ANTF Meetings" };
-const TAB_LABELS = { conviction: "Conviction", timeliness: "60-90 Charge Sheet", emergency112: "112", training: "Training", antf: "ANTF" };
-const RATE = { conviction: "Conviction rate", timeliness: "Within-time rate", emergency112: "% closed ≤100m", training: "% people trained", antf: "Total marks" };
-const DOMAIN_PATH = { conviction: "conviction", timeliness: "timeliness", emergency112: "112", training: "training", antf: "antf" };
+const DOMAIN_ORDER = ["conviction", "timeliness", "emergency112", "hsp", "training", "antf"];
+const TITLES = { conviction: "Conviction", timeliness: "Charge Sheet Timeliness", emergency112: "112 Performance", hsp: "HSP Performance", training: "Training Performance", antf: "ANTF Meetings" };
+const TAB_LABELS = { conviction: "Conviction", timeliness: "60-90 Charge Sheet", emergency112: "112", hsp: "HSP", training: "Training", antf: "ANTF" };
+const RATE = { conviction: "Conviction rate", timeliness: "Within-time rate", emergency112: "% closed ≤100m", hsp: "Final score", training: "% people trained", antf: "Total marks" };
+const DOMAIN_PATH = { conviction: "conviction", timeliness: "timeliness", emergency112: "112", hsp: "hsp", training: "training", antf: "antf" };
 
 const UnitList = ({ title, icon: Icon, rows, tone, testId }) => (
   <div data-testid={testId}>
@@ -79,6 +79,13 @@ const DomainBlock = ({ domain, d }) => (
           <Kpi label="Total marks scored" value={fmtInt(d.totals.total_marks)} sub="Meetings×3 + MoM×2" accent testId={`ov-${domain}-marks`} />
           <Kpi label="Avg marks / unit" value={fmt(d.totals.avg_marks, 1)} sub={`${d.totals.scored_count} of ${d.totals.unit_count} units`} testId={`ov-${domain}-avg`} />
         </>
+      ) : domain === "hsp" ? (
+        <>
+          <Kpi label="Latest accidents" value={fmtInt(d.totals.total_accidents)} sub={d.latest} accent testId={`ov-${domain}-accidents`} />
+          <Kpi label="Latest killed" value={fmtInt(d.totals.total_killed)} sub={d.latest} accent testId={`ov-${domain}-killed`} />
+          <Kpi label="Latest injured" value={fmtInt(d.totals.total_injured)} sub={d.latest} testId={`ov-${domain}-injured`} />
+          <Kpi label="Avg final score" value={fmt(d.totals.avg_overall_score)} sub={`${d.totals.scored_count} of ${d.totals.unit_count} units`} testId={`ov-${domain}-avg`} />
+        </>
       ) : (
         <>
           <Kpi label={`Base ${RATE[domain].toLowerCase()}`} value={`${fmt(d.totals.base_rate)}%`} sub={`${fmtInt(d.totals.base_num)} / ${fmtInt(d.totals.base_den)}`} testId={`ov-${domain}-base-rate`}
@@ -116,16 +123,18 @@ const DomainBlock = ({ domain, d }) => (
         </div>
       </Panel>
       <Panel title="Category distribution" subtitle="Units per category"><Distribution dist={d.distribution} /></Panel>
-      <Panel title={(domain === "emergency112" || domain === "training" || domain === "antf") ? "Unit snapshot" : "Range comparison"} subtitle={(domain === "emergency112" || domain === "training" || domain === "antf") ? "Average score" : "Average overall score per range"}>
+      <Panel title={(domain === "emergency112" || domain === "training" || domain === "antf" || domain === "hsp") ? "Unit snapshot" : "Range comparison"} subtitle={(domain === "emergency112" || domain === "training" || domain === "antf" || domain === "hsp") ? "Average score" : "Average overall score per range"}>
         <div className="space-y-2.5" data-testid={`ov-${domain}-ranges`}>
-          {(domain === "emergency112" || domain === "training" || domain === "antf") ? (
+          {(domain === "emergency112" || domain === "training" || domain === "antf" || domain === "hsp") ? (
             <div className="text-sm text-slate-600">
               <div className="flex justify-between py-1"><span>Units scored</span><span className="font-num font-semibold">{d.totals.scored_count} / {d.totals.unit_count}</span></div>
               <div className="flex justify-between py-1"><span>Avg score</span><span className="font-num font-semibold">{fmt(d.totals.avg_overall_score)}</span></div>
-              {domain !== "antf" && <div className="flex justify-between py-1"><span>Latest {RATE[domain]}</span><span className="font-num font-semibold">{fmt(d.totals.latest_rate)}%</span></div>}
+              {domain !== "antf" && domain !== "hsp" && <div className="flex justify-between py-1"><span>Latest {RATE[domain]}</span><span className="font-num font-semibold">{fmt(d.totals.latest_rate)}%</span></div>}
               {domain === "training" && <div className="flex justify-between py-1"><span>Avg Ranking marks</span><span className="font-num font-semibold">{fmt(d.totals.avg_marks, 1)}</span></div>}
               {domain === "antf" && <div className="flex justify-between py-1"><span>Total meetings</span><span className="font-num font-semibold">{fmtInt(d.totals.total_meetings)}</span></div>}
               {domain === "antf" && <div className="flex justify-between py-1"><span>Avg marks</span><span className="font-num font-semibold">{fmt(d.totals.avg_marks, 1)}</span></div>}
+              {domain === "hsp" && <div className="flex justify-between py-1"><span>Latest accidents</span><span className="font-num font-semibold">{fmtInt(d.totals.total_accidents)}</span></div>}
+              {domain === "hsp" && <div className="flex justify-between py-1"><span>Latest killed</span><span className="font-num font-semibold">{fmtInt(d.totals.total_killed)}</span></div>}
             </div>
           ) : d.ranges.map((r, i) => (
             <div key={r.range} className="text-xs" style={{ animationDelay: `${i * 40}ms` }}>
@@ -171,7 +180,7 @@ export default function Overview() {
             {Object.values(data)[0]?.scope_range ? `${Object.values(data)[0].scope_range} at a glance` : "State performance at a glance"}
           </h1>
           <p className="text-slate-400 mt-3 max-w-2xl text-sm md:text-base leading-relaxed">
-            Conviction, charge-sheet timeliness, 112, training, and ANTF meetings are scored separately, then combined. Default blend is equal weight across the five domains.
+            Conviction, charge-sheet timeliness, 112, HSP, training, and ANTF meetings are scored separately, then combined. Default blend is equal weight across the six domains.
           </p>
         </div>
       </motion.div>
