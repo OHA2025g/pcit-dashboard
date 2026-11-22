@@ -59,12 +59,13 @@ export default function ExplainDialog({ open, onOpenChange, params, labels }) {
     setSending(true);
     try {
       await api("post", "/explain/email", {
-        data: {
+          data: {
           domain: params.domain,
           type: params.type,
           base: params.base,
           latest: params.latest,
           unit: params.unit,
+          ...(params.grain ? { grain: params.grain } : {}),
           to,
         },
       });

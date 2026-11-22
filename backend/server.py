@@ -30,20 +30,30 @@ try:
     from backend.auth import auth_router, bind_auth, bootstrap_admin, require_user
     from backend.scoring import (
         DOMAINS, DEFAULT_POLICY, CATEGORIES, categories_for, score_units, totals, explain, enrich, combine,
-        combined_weights, _norm_unit,
+        combined_weights, _norm_unit, conviction_executive, conviction_detailed,
+        timeliness_executive, timeliness_detailed, emergency112_executive, emergency112_detailed,
+        hsp_executive, hsp_detailed,
     )
     from backend.workbook import parse_workbook, WorkbookError, _normalize_range
     from backend.emailer import send_email
     from backend.reports import build_section, render_pdf, render_email, render_explain_email
+    from backend.period_grain import (
+        GRAINS, GRAIN_LABELS, normalize_grain, aggregate_112_facts, grain_meta_payload,
+    )
 except ModuleNotFoundError:
     from auth import auth_router, bind_auth, bootstrap_admin, require_user
     from emailer import send_email
     from reports import build_section, render_pdf, render_email, render_explain_email
     from scoring import (
         DOMAINS, DEFAULT_POLICY, CATEGORIES, categories_for, score_units, totals, explain, enrich, combine,
-        combined_weights, _norm_unit,
+        combined_weights, _norm_unit, conviction_executive, conviction_detailed,
+        timeliness_executive, timeliness_detailed, emergency112_executive, emergency112_detailed,
+        hsp_executive, hsp_detailed,
     )
     from workbook import parse_workbook, WorkbookError, _normalize_range
+    from period_grain import (
+        GRAINS, GRAIN_LABELS, normalize_grain, aggregate_112_facts, grain_meta_payload,
+    )
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -230,8 +240,12 @@ async def load_facts(ds: dict) -> dict:
     if ds["id"] not in _cache:
         facts = await db.facts.find({"dataset_id": ds["id"]}, {"_id": 0}).to_list(20000)
         by_type: dict = {}
+        domain = ds.get("domain")
         for f in facts:
-            f = {**f, "range": _normalize_range(f.get("range", ""))}
+            unit = f.get("unit", "")
+            if domain == "hsp":
+                unit = _normalize_hsp_unit(unit)
+            f = {**f, "unit": unit, "range": _normalize_range(f.get("range", ""))}
             t = by_type.setdefault(f["type"], {"facts": {}, "units": []})
             if (f["unit"], f["range"]) not in t["units"]:
                 t["units"].append((f["unit"], f["range"]))
@@ -262,18 +276,35 @@ async def store_dataset(parsed: dict, filename: str, source: str, member: Option
     return ds
 
 
-async def compute(domain, type_, base, latest, member):
+async def compute(domain, type_, base, latest, member, grain: str = "monthly"):
     if domain not in DOMAINS:
         raise HTTPException(status_code=400, detail="Unknown domain")
     ds = await active_dataset(domain)
-    if base not in ds["periods"] or latest not in ds["periods"]:
-        raise HTTPException(status_code=400, detail="Unknown period")
     data = await load_facts(ds)
     if type_ not in data:
         raise HTTPException(status_code=400, detail="Unknown case type")
+
+    periods = list(ds["periods"])
+    grain_norm = "monthly"
+    monthly_facts = None
+    if domain == "emergency112":
+        grain_norm = normalize_grain(grain)
+        entry = data[type_]
+        monthly_facts = entry["facts"]
+        agg_facts, periods = aggregate_112_facts(entry["facts"], grain_norm)
+        data = {**data, type_: {"facts": agg_facts, "units": entry["units"]}}
+
+    if base not in periods or latest not in periods:
+        raise HTTPException(status_code=400, detail="Unknown period")
+
     policy = await get_policy()
     rows, cohort = score_units(domain, data[type_]["facts"], data[type_]["units"], base, latest, policy)
-    cohort["extras"] = enrich(domain, rows, data, ds["types"], type_, ds["periods"], base, latest, policy)
+    cohort["extras"] = enrich(
+        domain, rows, data, ds["types"], type_, periods, base, latest, policy,
+        monthly_facts=monthly_facts,
+    )
+    cohort["period_grain"] = grain_norm
+    cohort["periods"] = periods
     rng = scope_range(member)
     if rng:
         rows = [r for r in rows if r["range"] == rng]
@@ -312,10 +343,24 @@ async def meta(domain: str, member: dict = Depends(viewer)):
     cats = categories_for(domain)
     if domain in ("emergency112", "training", "antf", "hsp"):
         ranges = [r for r in ranges if r]
-    return {"domain": domain, "labels": DOMAINS[domain], "types": ds["types"], "periods": ds["periods"],
-            "units": units, "ranges": ranges, "unit_ranges": unit_ranges, "categories": cats,
-            "default_base": b, "default_latest": l, "scope_range": rng,
-            "dataset": {k: ds[k] for k in ("id", "filename", "source", "uploaded_at", "uploaded_by", "record_count", "unit_count")}}
+    payload = {
+        "domain": domain, "labels": DOMAINS[domain], "types": ds["types"], "periods": ds["periods"],
+        "units": units, "ranges": ranges, "unit_ranges": unit_ranges, "categories": cats,
+        "default_base": b, "default_latest": l, "scope_range": rng,
+        "dataset": {k: ds[k] for k in ("id", "filename", "source", "uploaded_at", "uploaded_by", "record_count", "unit_count")},
+    }
+    if domain == "emergency112":
+        grains = grain_meta_payload(ds["periods"])
+        payload["period_grains"] = grains
+        payload["period_grain_options"] = [{"id": g, "label": GRAIN_LABELS[g]} for g in GRAINS]
+        payload["default_period_grain"] = "monthly"
+        # Keep top-level periods aligned with default monthly grain
+        monthly = grains.get("monthly") or {}
+        if monthly.get("periods"):
+            payload["periods"] = monthly["periods"]
+            payload["default_base"] = monthly.get("default_base") or b
+            payload["default_latest"] = monthly.get("default_latest") or l
+    return payload
 
 
 def _filter_set(raw: str) -> set | None:
@@ -328,8 +373,8 @@ def _filter_set(raw: str) -> set | None:
 
 @api_router.get("/dashboard")
 async def dashboard(domain: str, type: str, base: str, latest: str, unit: str = "All", range: str = "All",
-                    category: str = "All", member: dict = Depends(viewer)):
-    ds, policy, rows, cohort, rng = await compute(domain, type, base, latest, member)
+                    category: str = "All", grain: str = "monthly", member: dict = Depends(viewer)):
+    ds, policy, rows, cohort, rng = await compute(domain, type, base, latest, member, grain=grain)
     unit_filter = _filter_set(unit)
     range_raw = _filter_set(range)
     range_filter = {_normalize_range(v) for v in range_raw} if range_raw is not None else None
@@ -344,12 +389,15 @@ async def dashboard(domain: str, type: str, base: str, latest: str, unit: str = 
     return {"state": {**totals(domain, rows), **{k: v for k, v in cohort["extras"].items() if k.startswith("state_")}},
             "selection": totals(domain, included), "rows": rows, "prev_window": cohort["extras"]["prev_window"],
             "cohort": cohort, "scope_range": rng, "weight": weight,
+            "period_grain": cohort.get("period_grain", "monthly"),
+            "periods": cohort.get("periods"),
             "policy_version": policy.get("version"), "dataset_id": ds["id"], "as_of": ds["uploaded_at"]}
 
 
 @api_router.get("/explain")
-async def explain_unit(domain: str, type: str, base: str, latest: str, unit: str, member: dict = Depends(viewer)):
-    ds, policy, rows, cohort, _ = await compute(domain, type, base, latest, member)
+async def explain_unit(domain: str, type: str, base: str, latest: str, unit: str, grain: str = "monthly",
+                       member: dict = Depends(viewer)):
+    ds, policy, rows, cohort, _ = await compute(domain, type, base, latest, member, grain=grain)
     row = next((r for r in rows if r["unit"] == unit), None)
     if not row:
         raise HTTPException(status_code=404, detail="Unit not found")
@@ -365,6 +413,7 @@ class ExplainEmailIn(BaseModel):
     latest: str
     unit: str
     to: str
+    grain: str = "monthly"
 
 
 @api_router.post("/explain/email")
@@ -372,7 +421,9 @@ async def email_explain(body: ExplainEmailIn, member: dict = Depends(viewer)):
     to = body.to.strip().lower()
     if not EMAIL_RE.match(to):
         raise HTTPException(status_code=422, detail="Enter a valid email address")
-    ds, policy, rows, cohort, _ = await compute(body.domain, body.type, body.base, body.latest, member)
+    ds, policy, rows, cohort, _ = await compute(
+        body.domain, body.type, body.base, body.latest, member, grain=body.grain,
+    )
     row = next((r for r in rows if r["unit"] == body.unit), None)
     if not row:
         raise HTTPException(status_code=404, detail="Unit not found")
@@ -389,6 +440,309 @@ async def email_explain(body: ExplainEmailIn, member: dict = Depends(viewer)):
         "type": body.type, "base": body.base, "latest": body.latest, "steps": len(steps),
     })
     return {"ok": True, "to": to}
+
+
+COURT_TYPE_ALIASES = {
+    "Both courts": "Both JMFC and Session",
+    "both courts": "Both JMFC and Session",
+    "Both": "Both JMFC and Session",
+}
+
+
+def resolve_conviction_type(raw: Optional[str], types: list) -> str:
+    if not raw:
+        return types[-1]
+    mapped = COURT_TYPE_ALIASES.get(raw, raw)
+    if mapped in types:
+        return mapped
+    # tolerate Excel short labels
+    low = mapped.lower()
+    for t in types:
+        if t.lower() == low or t.lower().startswith(low):
+            return t
+    raise HTTPException(status_code=400, detail="Unknown court type")
+
+
+def resolve_timeliness_type(raw: Optional[str], types: list) -> str:
+    if not raw:
+        return types[-1]
+    if raw in types:
+        return raw
+    low = raw.lower()
+    for t in types:
+        if t.lower() == low or t.lower().startswith(low):
+            return t
+    raise HTTPException(status_code=400, detail="Unknown case deadline")
+
+
+@api_router.get("/conviction/executive")
+async def conviction_executive_view(
+    type: str = Query(None),
+    base: str = Query(None),
+    latest: str = Query(None),
+    member: dict = Depends(viewer),
+):
+    """Executive Dashboard KPIs/charts for Overview → Conviction (filterable)."""
+    ds = await active_dataset("conviction")
+    default_base, default_latest = default_periods(ds)
+    type_ = resolve_conviction_type(type, ds["types"])
+    b = base or default_base
+    l = latest or default_latest
+    if b not in ds["periods"] or l not in ds["periods"]:
+        raise HTTPException(status_code=400, detail="Unknown period")
+    _, _, rows, _, rng = await compute("conviction", type_, b, l, member)
+    data = await load_facts(ds)
+    return {
+        "as_of": ds["uploaded_at"],
+        "scope_range": rng,
+        "types": ds["types"],
+        "periods": ds["periods"],
+        "court_options": [{"value": t, "label": t} for t in ds["types"]],
+        "executive": conviction_executive(data, rows, ds["periods"], b, l, type_),
+    }
+
+
+@api_router.get("/conviction/detailed")
+async def conviction_detailed_view(
+    unit: str = Query(None),
+    type: str = Query(None),
+    base: str = Query(None),
+    latest: str = Query(None),
+    range: str = Query("All"),
+    category: str = Query("All"),
+    member: dict = Depends(viewer),
+):
+    """Detailed Dashboard KPIs/charts for Conviction → Detailed (same filters as Unit rankings)."""
+    ds = await active_dataset("conviction")
+    default_base, default_latest = default_periods(ds)
+    type_ = resolve_conviction_type(type, ds["types"])
+    b = base or default_base
+    l = latest or default_latest
+    if b not in ds["periods"] or l not in ds["periods"]:
+        raise HTTPException(status_code=400, detail="Unknown period")
+    data = await load_facts(ds)
+    policy = await get_policy()
+    entry = data.get(type_) or {"units": []}
+    unit_names = sorted({u for u, _ in entry.get("units") or []})
+    if not unit_names:
+        raise HTTPException(status_code=404, detail="No units in conviction dataset")
+    # unit / range may be All, a single name, or comma-separated multi-select
+    unit_param = unit if unit not in (None, "") else "All"
+    range_param = range if range not in (None, "") else "All"
+    cat_param = category if category not in (None, "") else "All"
+    detailed = conviction_detailed(
+        data, ds["periods"], policy, unit_param, type_, b, l, range_param, cat_param,
+    )
+    rng = scope_range(member)
+    return {
+        "as_of": ds["uploaded_at"],
+        "scope_range": rng,
+        "types": ds["types"],
+        "periods": ds["periods"],
+        "court_options": [{"value": t, "label": t} for t in ds["types"]],
+        "detailed": detailed,
+    }
+
+
+@api_router.get("/timeliness/executive")
+async def timeliness_executive_view(
+    type: str = Query(None),
+    base: str = Query(None),
+    latest: str = Query(None),
+    member: dict = Depends(viewer),
+):
+    """Executive Dashboard KPIs/charts for Overview → 60-90 Charge Sheet."""
+    ds = await active_dataset("timeliness")
+    default_base, default_latest = default_periods(ds)
+    type_ = resolve_timeliness_type(type, ds["types"])
+    b = base or default_base
+    l = latest or default_latest
+    if b not in ds["periods"] or l not in ds["periods"]:
+        raise HTTPException(status_code=400, detail="Unknown period")
+    _, _, rows, _, rng = await compute("timeliness", type_, b, l, member)
+    data = await load_facts(ds)
+    return {
+        "as_of": ds["uploaded_at"],
+        "scope_range": rng,
+        "types": ds["types"],
+        "periods": ds["periods"],
+        "deadline_options": [{"value": t, "label": t} for t in ds["types"]],
+        "executive": timeliness_executive(data, rows, ds["periods"], b, l, type_),
+    }
+
+
+@api_router.get("/timeliness/detailed")
+async def timeliness_detailed_view(
+    unit: str = Query(None),
+    type: str = Query(None),
+    base: str = Query(None),
+    latest: str = Query(None),
+    range: str = Query("All"),
+    category: str = Query("All"),
+    member: dict = Depends(viewer),
+):
+    """Detailed Dashboard KPIs/charts for 60-90 → Overview tab."""
+    ds = await active_dataset("timeliness")
+    default_base, default_latest = default_periods(ds)
+    type_ = resolve_timeliness_type(type, ds["types"])
+    b = base or default_base
+    l = latest or default_latest
+    if b not in ds["periods"] or l not in ds["periods"]:
+        raise HTTPException(status_code=400, detail="Unknown period")
+    data = await load_facts(ds)
+    policy = await get_policy()
+    entry = data.get(type_) or {"units": []}
+    unit_names = sorted({u for u, _ in entry.get("units") or []})
+    if not unit_names:
+        raise HTTPException(status_code=404, detail="No units in timeliness dataset")
+    unit_param = unit if unit not in (None, "") else "All"
+    range_param = range if range not in (None, "") else "All"
+    cat_param = category if category not in (None, "") else "All"
+    detailed = timeliness_detailed(
+        data, ds["periods"], policy, unit_param, type_, b, l, range_param, cat_param,
+    )
+    rng = scope_range(member)
+    return {
+        "as_of": ds["uploaded_at"],
+        "scope_range": rng,
+        "types": ds["types"],
+        "periods": ds["periods"],
+        "deadline_options": [{"value": t, "label": t} for t in ds["types"]],
+        "detailed": detailed,
+    }
+
+
+@api_router.get("/emergency112/executive")
+async def emergency112_executive_view(
+    base: str = Query(None),
+    latest: str = Query(None),
+    member: dict = Depends(viewer),
+):
+    """Executive Dashboard KPIs/charts for Overview → 112."""
+    ds = await active_dataset("emergency112")
+    default_base, default_latest = default_periods(ds)
+    type_ = ds["types"][-1]
+    b = base or default_base
+    l = latest or default_latest
+    _, _, rows, _, rng = await compute("emergency112", type_, b, l, member, grain="monthly")
+    data = await load_facts(ds)
+    entry = data.get(type_) or data.get("All") or {"facts": {}, "units": []}
+    facts112, periods112 = aggregate_112_facts(entry["facts"], "monthly")
+    if b not in periods112 or l not in periods112:
+        raise HTTPException(status_code=400, detail="Unknown period")
+    data_monthly = {type_: {"facts": facts112, "units": entry["units"]}}
+    return {
+        "as_of": ds["uploaded_at"],
+        "scope_range": rng,
+        "types": ds["types"],
+        "periods": periods112,
+        "executive": emergency112_executive(data_monthly, rows, periods112, b, l, type_),
+    }
+
+
+@api_router.get("/emergency112/detailed")
+async def emergency112_detailed_view(
+    unit: str = Query(None),
+    base: str = Query(None),
+    latest: str = Query(None),
+    range: str = Query("All"),
+    category: str = Query("All"),
+    member: dict = Depends(viewer),
+):
+    """Detailed Dashboard KPIs/charts for 112 → Overview tab."""
+    ds = await active_dataset("emergency112")
+    default_base, default_latest = default_periods(ds)
+    type_ = ds["types"][-1]
+    b = base or default_base
+    l = latest or default_latest
+    data = await load_facts(ds)
+    policy = await get_policy()
+    entry = data.get(type_) or data.get("All") or {"facts": {}, "units": []}
+    facts112, periods112 = aggregate_112_facts(entry["facts"], "monthly")
+    if b not in periods112 or l not in periods112:
+        raise HTTPException(status_code=400, detail="Unknown period")
+    data_monthly = {type_: {"facts": facts112, "units": entry["units"]}}
+    unit_names = sorted({u for u, _ in entry.get("units") or []})
+    if not unit_names:
+        raise HTTPException(status_code=404, detail="No units in 112 dataset")
+    unit_param = unit if unit not in (None, "") else "All"
+    range_param = range if range not in (None, "") else "All"
+    cat_param = category if category not in (None, "") else "All"
+    detailed = emergency112_detailed(
+        data_monthly, periods112, policy, unit_param, type_, b, l, range_param, cat_param,
+    )
+    rng = scope_range(member)
+    return {
+        "as_of": ds["uploaded_at"],
+        "scope_range": rng,
+        "types": ds["types"],
+        "periods": periods112,
+        "detailed": detailed,
+    }
+
+
+@api_router.get("/hsp/executive")
+async def hsp_executive_view(
+    base: str = Query(None),
+    latest: str = Query(None),
+    member: dict = Depends(viewer),
+):
+    """Executive Dashboard KPIs/charts for Overview → HSP."""
+    ds = await active_dataset("hsp")
+    default_base, default_latest = default_periods(ds)
+    type_ = ds["types"][-1]
+    b = base or default_base
+    l = latest or default_latest
+    if b not in ds["periods"] or l not in ds["periods"]:
+        raise HTTPException(status_code=400, detail="Unknown period")
+    _, _, rows, _, rng = await compute("hsp", type_, b, l, member)
+    data = await load_facts(ds)
+    return {
+        "as_of": ds["uploaded_at"],
+        "scope_range": rng,
+        "types": ds["types"],
+        "periods": ds["periods"],
+        "executive": hsp_executive(data, rows, ds["periods"], b, l, type_),
+    }
+
+
+@api_router.get("/hsp/detailed")
+async def hsp_detailed_view(
+    unit: str = Query(None),
+    base: str = Query(None),
+    latest: str = Query(None),
+    range: str = Query("All"),
+    category: str = Query("All"),
+    member: dict = Depends(viewer),
+):
+    """Detailed Dashboard KPIs/charts for HSP → Overview tab."""
+    ds = await active_dataset("hsp")
+    default_base, default_latest = default_periods(ds)
+    type_ = ds["types"][-1]
+    b = base or default_base
+    l = latest or default_latest
+    if b not in ds["periods"] or l not in ds["periods"]:
+        raise HTTPException(status_code=400, detail="Unknown period")
+    data = await load_facts(ds)
+    policy = await get_policy()
+    entry = data.get(type_) or data.get("All") or {"units": []}
+    unit_names = sorted({u for u, _ in entry.get("units") or []})
+    if not unit_names:
+        raise HTTPException(status_code=404, detail="No units in HSP dataset")
+    unit_param = unit if unit not in (None, "") else "All"
+    range_param = range if range not in (None, "") else "All"
+    cat_param = category if category not in (None, "") else "All"
+    detailed = hsp_detailed(
+        data, ds["periods"], policy, unit_param, type_, b, l, range_param, cat_param,
+    )
+    rng = scope_range(member)
+    return {
+        "as_of": ds["uploaded_at"],
+        "scope_range": rng,
+        "types": ds["types"],
+        "periods": ds["periods"],
+        "detailed": detailed,
+    }
 
 
 @api_router.get("/overview")
@@ -412,10 +766,33 @@ async def overview(member: dict = Depends(viewer)):
         cats = categories_for(domain)
         dist = {c: sum(1 for r in rows if r["category"] == c) for c in cats}
         range_stats = [x for x in range_stats if x["range"] or domain not in ("emergency112", "training", "antf", "hsp")]
-        out[domain] = {"type": type_, "base": b, "latest": l, "totals": totals(domain, rows),
-                       "top": scored[:5], "bottom": scored[-5:][::-1], "distribution": dist,
-                       "ranges": sorted(range_stats, key=lambda x: -(x["avg_overall_score"] or 0)),
-                       "as_of": ds["uploaded_at"], "scope_range": rng}
+        payload = {"type": type_, "base": b, "latest": l, "totals": totals(domain, rows),
+                   "top": scored[:5], "bottom": scored[-5:][::-1], "distribution": dist,
+                   "ranges": sorted(range_stats, key=lambda x: -(x["avg_overall_score"] or 0)),
+                   "as_of": ds["uploaded_at"], "scope_range": rng}
+        if domain == "conviction":
+            data = await load_facts(ds)
+            payload["executive"] = conviction_executive(data, rows, ds["periods"], b, l, type_)
+            payload["types"] = ds["types"]
+            payload["periods"] = ds["periods"]
+            payload["court_options"] = [{"value": t, "label": t} for t in ds["types"]]
+        elif domain == "timeliness":
+            data = await load_facts(ds)
+            payload["executive"] = timeliness_executive(data, rows, ds["periods"], b, l, type_)
+            payload["types"] = ds["types"]
+            payload["periods"] = ds["periods"]
+            payload["deadline_options"] = [{"value": t, "label": t} for t in ds["types"]]
+        elif domain == "emergency112":
+            data = await load_facts(ds)
+            payload["executive"] = emergency112_executive(data, rows, ds["periods"], b, l, type_)
+            payload["types"] = ds["types"]
+            payload["periods"] = ds["periods"]
+        elif domain == "hsp":
+            data = await load_facts(ds)
+            payload["executive"] = hsp_executive(data, rows, ds["periods"], b, l, type_)
+            payload["types"] = ds["types"]
+            payload["periods"] = ds["periods"]
+        out[domain] = payload
     return out
 
 
@@ -899,19 +1276,33 @@ UNIT_MAP_ANTF = {
     "Aurangabad": "Aurangabad", "Osmanabad": "Osmanabad",
 }
 
-# Conviction unit → HSP Quaterly unit
+# Conviction unit → HSP Quaterly unit (as stored / displayed after HSP_UNIT_ALIASES)
 UNIT_MAP_HSP = {
     "Ahmednagar": "Ahilyanagar", "Amravati (C)": "Amravati City", "Amravati (R)": "Amaravati ®",
-    "Chh. Sambhaji N. (C)": "C.S.Nagarcity", "Chh. Sambhaji N. (R)": "C.S.Nagar®",
-    "Mira Bhyander V.V. (C)": "MB-VV", "Mumbai (C)": "Mumbai city",
+    "Chh. Sambhaji N. (C)": "Chh. Sambhaji N. (C)", "Chh. Sambhaji N. (R)": "Chh. Sambhaji N. ®",
+    "Mira Bhyander V.V. (C)": "Mira Bhyander V.V. (C)", "Mumbai (C)": "Mumbai city",
     "Nagpur (C)": "Nagpur city", "Nagpur (R)": "Nagpur ®", "Nagpur Rural": "Nagpur ®",
     "Nasik (C)": "Nasik city", "Nasik (R)": "Nasik ®",
-    "Navi Mumbai (C)": "Navi Mumbai", "Pimpri Chinchwad (C)": "PCPC",
+    "Navi Mumbai (C)": "Navi Mumbai", "Pimpri Chinchwad (C)": "PCMC",
     "Pune (C)": "Pune city", "Pune (R)": "Pune ®",
     "Solapur (C)": "Solapur city", "Solapur (R)": "Solapur ®",
     "Thane (C)": "Thane city", "Thane (R)": "Thane ®",
     "Osmanabad": "Dharashiv", "Beed": "Beed",
 }
+
+# Legacy HSP workbook labels → canonical HSP display names
+HSP_UNIT_ALIASES = {
+    "C.S.Nagarcity": "Chh. Sambhaji N. (C)",
+    "C.S.Nagar®": "Chh. Sambhaji N. ®",
+    "C.S.Nagar": "Chh. Sambhaji N. ®",
+    "MB-VV": "Mira Bhyander V.V. (C)",
+    "PCPC": "PCMC",
+}
+
+
+def _normalize_hsp_unit(unit: str) -> str:
+    cleaned = " ".join(str(unit or "").replace("\n", " ").split()).strip()
+    return HSP_UNIT_ALIASES.get(cleaned, cleaned)
 
 _MONTH_ORD = {m: i for i, m in enumerate(
     ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], 1)}

@@ -14,15 +14,17 @@ const Field = ({ label, value, onChange, options, testId, allLabel, disabledOpti
       <SelectContent className="max-h-72 rounded-sm">
         {allLabel && <SelectItem value="All">{allLabel}</SelectItem>}
         {options.map((o) => {
-          const disabled = disabledOptions.includes(o);
+          const optValue = typeof o === "object" && o != null ? o.value : o;
+          const optLabel = typeof o === "object" && o != null ? (o.label ?? o.value) : o;
+          const disabled = disabledOptions.includes(optValue);
           return (
             <SelectItem
-              key={o}
-              value={o}
+              key={optValue}
+              value={optValue}
               disabled={disabled}
               className={disabled ? "text-slate-400 opacity-50" : undefined}
             >
-              {o}
+              {optLabel}
             </SelectItem>
           );
         })}
@@ -38,7 +40,7 @@ function summarize(selected, allLabel) {
   return `${selected[0]} +${selected.length - 1}`;
 }
 
-const MultiField = ({ label, values, onChange, options, allLabel, testId, disabledOptions = [] }) => {
+export const MultiField = ({ label, values, onChange, options, allLabel, testId, disabledOptions = [] }) => {
   const selected = values || [];
   const isAll = selected.length === 0;
 
@@ -116,14 +118,25 @@ function periodsAtOrBefore(periods, base) {
   return periods.slice(0, idx + 1);
 }
 
-export default function FilterBar({ meta, f, set, onReset }) {
+export default function FilterBar({ meta, f, set, onReset, embedded = false, testId = "filter-bar" }) {
   const upd = (k) => (v) => set((p) => ({ ...p, [k]: v }));
   const simple = meta.domain === "emergency112" || meta.domain === "training" || meta.domain === "antf" || meta.domain === "hsp";
   const snapshot = meta.domain === "antf";
-  const periods = meta.periods || [];
+  const hasPeriodGrain = meta.domain === "emergency112" && Array.isArray(meta.period_grain_options) && meta.period_grain_options.length > 0;
+  const grainId = f.period_grain || meta.default_period_grain || "monthly";
+  const grainMeta = hasPeriodGrain ? (meta.period_grains?.[grainId] || null) : null;
+  const periods = grainMeta?.periods || meta.periods || [];
   const unitRanges = meta.unit_ranges || {};
   const latestDisabled = periodsAtOrBefore(periods, f.base);
   const baseDisabled = periods.length ? [periods[periods.length - 1]] : [];
+
+  const setPeriodGrain = (nextGrain) => set((p) => {
+    const next = meta.period_grains?.[nextGrain];
+    const nextPeriods = next?.periods || meta.periods || [];
+    const nextBase = next?.default_base || nextPeriods[Math.max(0, nextPeriods.length - 2)] || p.base;
+    const nextLatest = next?.default_latest || nextPeriods[nextPeriods.length - 1] || p.latest;
+    return { ...p, period_grain: nextGrain, base: nextBase, latest: nextLatest };
+  });
 
   const selectedUnits = Array.isArray(f.unit) ? f.unit : (f.unit && f.unit !== "All" ? [f.unit] : []);
   const selectedRanges = Array.isArray(f.range) ? f.range : (f.range && f.range !== "All" ? [f.range] : []);
@@ -169,9 +182,11 @@ export default function FilterBar({ meta, f, set, onReset }) {
 
   const grid = snapshot
     ? "grid-cols-2 md:grid-cols-4 xl:grid-cols-[1.2fr_1.1fr_1.2fr_auto]"
-    : simple
-      ? "grid-cols-2 md:grid-cols-3 xl:grid-cols-[1.2fr_1.1fr_1fr_1fr_1.1fr_auto]"
-      : "grid-cols-2 md:grid-cols-4 xl:grid-cols-[1.3fr_1.1fr_1.2fr_1fr_1fr_1.1fr_auto]";
+    : hasPeriodGrain
+      ? "grid-cols-2 md:grid-cols-3 xl:grid-cols-[1.2fr_1.1fr_1.1fr_1fr_1fr_1.1fr_auto]"
+      : simple
+        ? "grid-cols-2 md:grid-cols-3 xl:grid-cols-[1.2fr_1.1fr_1fr_1fr_1.1fr_auto]"
+        : "grid-cols-2 md:grid-cols-4 xl:grid-cols-[1.3fr_1.1fr_1.2fr_1fr_1fr_1.1fr_auto]";
 
   const unitField = (
     <MultiField
@@ -198,14 +213,25 @@ export default function FilterBar({ meta, f, set, onReset }) {
 
   return (
     <div
-      className="sticky top-14 z-40 -mx-4 md:-mx-8 px-4 md:px-8 py-3.5 bg-background/85 backdrop-blur-xl border-b border-slate-200/90 shadow-[0_8px_24px_-20px_rgba(15,23,42,0.35)]"
-      data-testid="filter-bar"
+      className={embedded
+        ? "surface-panel rounded-sm p-3"
+        : "sticky top-14 z-40 -mx-4 md:-mx-8 px-4 md:px-8 py-3.5 bg-background/85 backdrop-blur-xl border-b border-slate-200/90 shadow-[0_8px_24px_-20px_rgba(15,23,42,0.35)]"}
+      data-testid={testId}
     >
       <div className={`grid ${grid} gap-3 items-end`}>
         {!simple && <Field label="Case type" value={f.type} onChange={upd("type")} options={meta.types} testId="filter-type" />}
         {simple && unitField}
         {rangeField}
         {!simple && unitField}
+        {hasPeriodGrain && (
+          <Field
+            label="Period view"
+            value={grainId}
+            onChange={setPeriodGrain}
+            options={(meta.period_grain_options || []).map((o) => ({ value: o.id, label: o.label }))}
+            testId="filter-period-grain"
+          />
+        )}
         {!snapshot && (
           <>
             <Field

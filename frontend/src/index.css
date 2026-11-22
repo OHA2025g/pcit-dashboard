@@ -141,13 +141,20 @@ body {
     color: #FFFFFF !important;
 }
 
-/* Rate-change / improvement KPI — white + crimson figure */
+/* Rate-change / improvement KPI — white; Delta sets green/red */
 .kpi-change {
     background: #FFFFFF !important;
 }
-.kpi-change .kpi-figure,
-.kpi-change .kpi-figure * {
+
+/* Signed deltas: positive green, negative red (used in rankings + KPI cards) */
+.delta-positive {
+    color: #047857 !important;
+}
+.delta-negative {
     color: #B4233C !important;
+}
+.delta-zero {
+    color: #64748b !important;
 }
 
 .rise { animation: rise .45s cubic-bezier(.2,.7,.2,1) both; }

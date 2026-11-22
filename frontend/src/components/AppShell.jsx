@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { LayoutGrid, Scale, Timer, PhoneCall, GraduationCap, Users, CarFront, Settings2, Loader2, Clock, LineChart, Stamp, Mail, LogOut } from "lucide-react";
+import { LayoutGrid, Scale, Timer, PhoneCall, GraduationCap, Users, CarFront, Settings2, Loader2, Clock, Stamp, Mail, LogOut } from "lucide-react";
 import { useMe } from "@/lib/api";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { ROLE_LABELS } from "@/lib/format";
@@ -19,7 +19,6 @@ const NAV_ALL = [
   { to: "/hsp", label: "HSP", title: "HSP Performance", icon: CarFront, id: "nav-hsp" },
   { to: "/training", label: "Training", title: "Training Performance", icon: GraduationCap, id: "nav-training" },
   { to: "/antf", label: "ANTF", title: "ANTF Meetings", icon: Users, id: "nav-antf" },
-  { to: "/trends", label: "Trends", icon: LineChart, id: "nav-trends" },
   { to: "/reports", label: "Reports", icon: Mail, id: "nav-reports", roles: ["admin", "approver", "state_viewer"] },
   { to: "/approvals", label: "Approvals", icon: Stamp, id: "nav-approvals", roles: ["admin", "approver"] },
   { to: "/admin", label: "Admin", icon: Settings2, id: "nav-admin", roles: ["admin"] },

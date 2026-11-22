@@ -7,13 +7,19 @@ import { useApi, errMsg } from "@/lib/api";
 import { Panel, Kpi, Delta, CategoryBadge } from "@/components/Primitives";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CATEGORY_STYLES, fmt, fmtInt, fmtDate } from "@/lib/format";
-import CombinedIndex from "@/components/CombinedIndex";
+import MaharashtraMap from "@/components/MaharashtraMap";
+import ConvictionExecutiveOverview from "@/components/ConvictionExecutiveOverview";
+import TimelinessExecutiveOverview from "@/components/TimelinessExecutiveOverview";
+import Emergency112ExecutiveOverview from "@/components/Emergency112ExecutiveOverview";
+import HspExecutiveOverview from "@/components/HspExecutiveOverview";
 import { fadeUp, staggerContainer, staggerFast } from "@/lib/motion";
 import { CHART } from "@/lib/chartTheme";
 
-const DOMAIN_ORDER = ["conviction", "timeliness", "emergency112", "hsp", "training", "antf"];
+// Training & ANTF kept for DomainBlock/API; temporarily omitted from Overview tabs only.
+const DOMAIN_ORDER = ["conviction", "timeliness", "emergency112", "hsp"];
 const TITLES = { conviction: "Conviction", timeliness: "Charge Sheet Timeliness", emergency112: "112 Performance", hsp: "HSP Performance", training: "Training Performance", antf: "ANTF Meetings" };
-const TAB_LABELS = { conviction: "Conviction", timeliness: "60-90 Charge Sheet", emergency112: "112", hsp: "HSP", training: "Training", antf: "ANTF" };
+const TAB_LABELS = { conviction: "Conviction", timeliness: "60-90 Charge Sheet", emergency112: "112", hsp: "HSP", map: "Map" };
+const MAP_TAB = "map";
 const RATE = { conviction: "Conviction rate", timeliness: "Within-time rate", emergency112: "% closed ≤100m", hsp: "Final score", training: "% people trained", antf: "Total marks" };
 const DOMAIN_PATH = { conviction: "conviction", timeliness: "timeliness", emergency112: "112", hsp: "hsp", training: "training", antf: "antf" };
 
@@ -32,18 +38,18 @@ const UnitList = ({ title, icon: Icon, rows, tone, testId }) => (
 const Distribution = ({ dist }) => {
   const data = Object.entries(dist).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
   return (
-    <div className="flex items-center gap-5">
-      <div className="h-36 w-36 shrink-0">
+    <div className="flex h-full min-h-[200px] items-center justify-center gap-6 w-full">
+      <div className="h-44 w-44 shrink-0">
         <ResponsiveContainer>
           <PieChart>
-            <Pie data={data} dataKey="value" innerRadius={38} outerRadius={64} paddingAngle={2} stroke="none" isAnimationActive animationDuration={CHART.animationDuration}>
+            <Pie data={data} dataKey="value" innerRadius={48} outerRadius={80} paddingAngle={2} stroke="none" isAnimationActive animationDuration={CHART.animationDuration}>
               {data.map((d) => <Cell key={d.name} fill={(CATEGORY_STYLES[d.name] || CATEGORY_STYLES["Not scored"]).color} />)}
             </Pie>
             <Tooltip />
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {Object.entries(dist).map(([k, v]) => (
           <div key={k} className="flex items-center gap-2.5 text-xs">
             <CategoryBadge value={k} />
@@ -122,7 +128,9 @@ const DomainBlock = ({ domain, d }) => (
           <UnitList title="Bottom 5" icon={TrendingDown} rows={d.bottom} tone="text-rose-700" testId={`ov-${domain}-bottom`} />
         </div>
       </Panel>
-      <Panel title="Category distribution" subtitle="Units per category"><Distribution dist={d.distribution} /></Panel>
+      <Panel title="Category distribution" subtitle="Units per category" bodyClassName="flex items-center justify-center">
+        <Distribution dist={d.distribution} />
+      </Panel>
       <Panel title={(domain === "emergency112" || domain === "training" || domain === "antf" || domain === "hsp") ? "Unit snapshot" : "Range comparison"} subtitle={(domain === "emergency112" || domain === "training" || domain === "antf" || domain === "hsp") ? "Average score" : "Average overall score per range"}>
         <div className="space-y-2.5" data-testid={`ov-${domain}-ranges`}>
           {(domain === "emergency112" || domain === "training" || domain === "antf" || domain === "hsp") ? (
@@ -164,36 +172,37 @@ export default function Overview() {
     () => (data ? DOMAIN_ORDER.filter((k) => data[k]) : []),
     [data],
   );
-  const activeTab = tab && domains.includes(tab) ? tab : domains[0];
+  const tabs = useMemo(() => (domains.length ? [MAP_TAB, ...domains] : []), [domains]);
+  const activeTab = tab && tabs.includes(tab) ? tab : tabs[0];
 
   if (error) return <div className="text-rose-700 text-sm mt-10" data-testid="overview-error">{error}</div>;
   if (!data) return <div className="flex items-center gap-2 text-slate-500 mt-20 justify-center"><Loader2 className="h-5 w-5 animate-spin" />Loading overview…</div>;
   return (
     <motion.div className="space-y-8" data-testid="overview-page" variants={staggerContainer} initial="hidden" animate="show">
-      <motion.div variants={fadeUp} className="bg-brand-chrome text-white rounded-sm p-8 md:p-10 relative overflow-hidden">
-        <div className="absolute inset-0 grid-texture grid-texture-animated" />
-        <div className="absolute -top-20 right-0 h-56 w-56 rounded-full bg-teal-500/10 blur-3xl pointer-events-none" />
-        <div className="relative">
-          <div className="text-[11px] uppercase tracking-[0.25em] text-teal-400 font-semibold">Executive overview</div>
-          <div className="h-0.5 w-10 bg-teal-500 mt-3 mb-4 rounded-full" />
-          <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight">
-            {Object.values(data)[0]?.scope_range ? `${Object.values(data)[0].scope_range} at a glance` : "State performance at a glance"}
-          </h1>
-          <p className="text-slate-400 mt-3 max-w-2xl text-sm md:text-base leading-relaxed">
-            Conviction, charge-sheet timeliness, 112, HSP, training, and ANTF meetings are scored separately, then combined. Default blend is equal weight across the six domains.
-          </p>
+      <motion.div variants={fadeUp} className="space-y-0">
+        <div className="bg-brand-chrome text-white rounded-t-sm rounded-b-none px-3 py-3 md:px-4 md:py-3.5 relative overflow-hidden">
+          <div className="absolute inset-0 grid-texture grid-texture-animated opacity-60" />
+          <div className="absolute -top-8 right-0 h-20 w-20 rounded-full bg-teal-500/10 blur-2xl pointer-events-none" />
+          <div className="relative">
+            <div className="text-[8px] uppercase tracking-[0.2em] text-teal-400 font-semibold">Executive overview</div>
+            <div className="h-0.5 w-4 bg-teal-500 mt-1 mb-1.5 rounded-full" />
+            <h1 className="font-display text-base sm:text-lg lg:text-xl font-bold tracking-tight leading-tight">
+              {Object.values(data)[0]?.scope_range ? `${Object.values(data)[0].scope_range} at a glance` : "State performance at a glance"}
+            </h1>
+            <p className="text-slate-400 mt-1 max-w-xl text-[10px] md:text-[11px] leading-snug">
+              Conviction, charge-sheet timeliness, 112, and HSP are scored separately, then combined.
+            </p>
+          </div>
         </div>
-      </motion.div>
 
-      {domains.length > 0 && (
-        <motion.div variants={fadeUp}>
+        {tabs.length > 0 && (
           <Tabs value={activeTab} onValueChange={setTab} data-testid="overview-domain-tabs">
-            <TabsList className="rounded-sm bg-white border border-slate-200 h-auto p-1 flex flex-wrap justify-start gap-1 w-full md:w-auto">
-              {domains.map((k) => (
+            <TabsList className="rounded-none rounded-b-sm bg-white border border-t-0 border-slate-200 h-auto p-1 grid gap-1 w-full" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+              {tabs.map((k) => (
                 <TabsTrigger
                   key={k}
                   value={k}
-                  className="rounded-sm px-3 py-2 text-sm data-[state=active]:bg-brand-chrome data-[state=active]:text-white data-[state=active]:shadow-none"
+                  className="rounded-sm px-3 py-2 text-sm w-full justify-center data-[state=active]:bg-brand-chrome data-[state=active]:text-white data-[state=active]:shadow-none"
                   data-testid={`overview-tab-${k}`}
                 >
                   {TAB_LABELS[k] || TITLES[k]}
@@ -202,14 +211,24 @@ export default function Overview() {
             </TabsList>
             {domains.map((k) => (
               <TabsContent key={k} value={k} className="mt-5 focus-visible:ring-0">
-                <DomainBlock domain={k} d={data[k]} />
+                {k === "conviction"
+                  ? <ConvictionExecutiveOverview d={data[k]} />
+                  : k === "timeliness"
+                    ? <TimelinessExecutiveOverview d={data[k]} />
+                    : k === "emergency112"
+                      ? <Emergency112ExecutiveOverview d={data[k]} />
+                      : k === "hsp"
+                        ? <HspExecutiveOverview d={data[k]} />
+                        : <DomainBlock domain={k} d={data[k]} />}
               </TabsContent>
             ))}
+            <TabsContent value={MAP_TAB} className="mt-5 focus-visible:ring-0">
+              <MaharashtraMap overview={data} />
+            </TabsContent>
           </Tabs>
-        </motion.div>
-      )}
+        )}
+      </motion.div>
 
-      <CombinedIndex />
     </motion.div>
   );
 }

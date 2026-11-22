@@ -14,28 +14,28 @@ export const CategoryBadge = ({ value, testId }) => {
   );
 };
 
-export const Panel = ({ title, subtitle, right, children, className = "", testId, tone = "default" }) => (
+export const Panel = ({ title, subtitle, right, children, className = "", bodyClassName = "", testId, tone = "default" }) => (
   <motion.section
     variants={fadeUp}
     initial="hidden"
     animate="show"
     data-testid={testId}
     className={cn(
-      "rounded-sm rise overflow-hidden",
+      "rounded-sm rise overflow-hidden flex flex-col h-full",
       tone === "emphasis" ? "surface-panel-emphasis" : "surface-panel",
       className,
     )}
   >
     {(title || right) && (
-      <div className="flex items-start justify-between gap-4 px-5 pt-4 pb-3 border-b border-slate-100/90 bg-gradient-to-b from-white to-slate-50/40">
-        <div>
+      <div className="flex items-start justify-between gap-4 px-5 pt-4 pb-3 border-b border-slate-100/90 bg-gradient-to-b from-white to-slate-50/40 shrink-0">
+        <div className="min-w-0">
           <h3 className="font-display text-base font-semibold text-slate-900 tracking-tight">{title}</h3>
           {subtitle && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{subtitle}</p>}
         </div>
         {right}
       </div>
     )}
-    <div className="p-5">{children}</div>
+    <div className={cn("p-5 flex-1", bodyClassName)}>{children}</div>
   </motion.section>
 );
 
@@ -100,10 +100,11 @@ export const Kpi = ({ label, value, sub, accent, tone, testId, formula }) => {
 
 export const Delta = ({ value, suffix = " pp", invert = false, testId }) => {
   if (value === null || value === undefined) return <span data-testid={testId}>—</span>;
-  const good = invert ? value < 0 : value >= 0;
+  const signed = invert ? -value : value;
+  const tone = signed > 0 ? "delta-positive" : signed < 0 ? "delta-negative" : "delta-zero";
   return (
-    <span data-testid={testId} className={`font-num font-semibold ${good ? "text-emerald-700" : "text-rose-700"}`}>
-      {value > 0 ? "+" : ""}{value.toFixed(2)}{suffix}
+    <span data-testid={testId} className={`font-num font-semibold ${tone}`}>
+      {value > 0 ? "+" : ""}{Number(value).toFixed(2)}{suffix}
     </span>
   );
 };

@@ -28,6 +28,15 @@ RANGE_ALIASES = {
     "Thane Range": "Kokan Range",
 }
 
+# Legacy HSP workbook unit labels → canonical HSP display names
+HSP_UNIT_ALIASES = {
+    "C.S.Nagarcity": "Chh. Sambhaji N. (C)",
+    "C.S.Nagar®": "Chh. Sambhaji N. ®",
+    "C.S.Nagar": "Chh. Sambhaji N. ®",
+    "MB-VV": "Mira Bhyander V.V. (C)",
+    "PCPC": "PCMC",
+}
+
 
 def _normalize_range(v) -> str:
     rng = str(v or "").strip()
@@ -43,6 +52,11 @@ def _num(v):
 
 def _clean_unit(v) -> str:
     return re.sub(r"\s+", " ", str(v or "").replace("\n", " ")).strip()
+
+
+def _normalize_hsp_unit(v) -> str:
+    cleaned = _clean_unit(v)
+    return HSP_UNIT_ALIASES.get(cleaned, cleaned)
 
 
 def _to_seconds(v) -> float | None:
@@ -285,7 +299,7 @@ def parse_hsp(wb, rows=None) -> dict:
     for i, r in enumerate(rows[1:], start=2):
         if not r or r[1] in (None, ""):
             continue
-        unit = _clean_unit(r[1])
+        unit = _normalize_hsp_unit(r[1])
         try:
             if is_master:
                 period = str(r[12] or "").strip()

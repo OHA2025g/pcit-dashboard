@@ -1,19 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
+import {
+  ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Tooltip,
+} from "recharts";
 import { Panel, CategoryBadge } from "@/components/Primitives";
 import ExportMenu from "@/components/ExportMenu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApi } from "@/lib/api";
-import { fmt, slug } from "@/lib/format";
+import { fmt } from "@/lib/format";
+import { CHART, TipBox } from "@/lib/chartTheme";
 
-const COLS = [
-  { key: "rank", label: "Rank" }, { key: "unit", label: "Unit" }, { key: "range", label: "Range" },
-  { key: "conviction_score", label: "Conviction score" }, { key: "conviction_rank", label: "Conv. rank" },
-  { key: "timeliness_score", label: "Timeliness score" }, { key: "timeliness_rank", label: "Tim. rank" },
-  { key: "emergency112_score", label: "112 score" }, { key: "emergency112_rank", label: "112 rank" },
-  { key: "hsp_score", label: "HSP score" }, { key: "hsp_rank", label: "HSP rank" },
-  { key: "training_score", label: "Training score" }, { key: "training_rank", label: "Train. rank" },
-  { key: "antf_score", label: "ANTF marks" }, { key: "antf_rank", label: "ANTF rank" },
-  { key: "combined_score", label: "Combined index" }, { key: "category", label: "Category" },
+const AXES = [
+  { key: "conviction_score", label: "Conviction" },
+  { key: "timeliness_score", label: "60-90 Charge Sheet" },
+  { key: "emergency112_score", label: "112" },
+  { key: "hsp_score", label: "HSP" },
+];
+
+const EXPORT_COLS = [
+  { key: "subject", label: "Domain" },
+  { key: "score", label: "Score" },
 ];
 
 function weightLabel(weight) {
@@ -22,67 +28,177 @@ function weightLabel(weight) {
     const t = Math.round((weight.timeliness ?? 0) * 100);
     const e = Math.round((weight.emergency112 ?? 0) * 100);
     const h = Math.round((weight.hsp ?? 0) * 100);
-    const tr = Math.round((weight.training ?? 0) * 100);
-    const a = Math.round((weight.antf ?? 0) * 100);
-    return `${c}% conviction · ${t}% timeliness · ${e}% 112 · ${h}% HSP · ${tr}% training · ${a}% ANTF`;
+    return `${c}% conviction · ${t}% timeliness · ${e}% 112 · ${h}% HSP`;
   }
   const w = Math.round((weight ?? 0.5) * 100);
   return `${w}% conviction / ${100 - w}% other`;
 }
 
+function scoreOrZero(v) {
+  return v == null || Number.isNaN(Number(v)) ? 0 : Number(v);
+}
+
 export default function CombinedIndex() {
   const api = useApi();
   const [data, setData] = useState(null);
-  const [all, setAll] = useState(false);
-  useEffect(() => { api("get", "/combined").then(setData).catch(() => setData({ rows: [], error: true })); }, [api]);
-  if (!data) return <div className="flex items-center gap-2 text-slate-500 py-6"><Loader2 className="h-4 w-4 animate-spin" />Loading combined index…</div>;
-  if (data.error) return <div className="text-sm text-rose-700" data-testid="combined-error">Combined index is unavailable: conviction, timeliness, 112, training, ANTF, and HSP datasets must all be active.</div>;
-  const rows = [...data.rows].sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
+  const [unit, setUnit] = useState("");
+
+  useEffect(() => {
+    api("get", "/combined")
+      .then((res) => {
+        setData(res);
+        const ranked = [...(res.rows || [])].sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
+        if (ranked[0]?.unit) setUnit(ranked[0].unit);
+      })
+      .catch(() => setData({ rows: [], error: true }));
+  }, [api]);
+
+  const rows = useMemo(
+    () => (data?.rows ? [...data.rows].sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999)) : []),
+    [data],
+  );
+
+  const selected = useMemo(
+    () => rows.find((r) => r.unit === unit) || rows[0] || null,
+    [rows, unit],
+  );
+
+  const radarData = useMemo(() => {
+    if (!selected) return [];
+    return AXES.map((a) => ({
+      subject: a.label,
+      score: scoreOrZero(selected[a.key]),
+      fullMark: 100,
+    }));
+  }, [selected]);
+
+  if (!data) {
+    return (
+      <div className="flex items-center gap-2 text-slate-500 py-6">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Loading combined index…
+      </div>
+    );
+  }
+  if (data.error) {
+    return (
+      <div className="text-sm text-rose-700" data-testid="combined-error">
+        Combined index is unavailable: conviction, timeliness, 112, training, ANTF, and HSP datasets must all be active.
+      </div>
+    );
+  }
+
   const label = weightLabel(data.weight);
   const win = data.windows || {};
-  const shown = all ? rows : rows.slice(0, 10);
+  const activeUnit = selected?.unit || unit;
+
   return (
-    <Panel testId="combined-index-panel" title="Combined police performance index"
+    <Panel
+      testId="combined-index-panel"
+      title="Combined police performance index"
       subtitle={`${label}${win.conviction ? ` · conviction ${win.conviction.base} → ${win.conviction.latest}` : ""} · policy v${data.policy_version ?? "-"}`}
-      right={<ExportMenu title="Combined Performance Index" view="combined-index" columns={COLS} rows={rows} context={{ Weight: label }} testId="combined-export" />}>
-      <div className="overflow-x-auto -mx-5">
-        <table className="w-full text-[12.5px]" data-testid="combined-table">
-          <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500"><tr>{COLS.map((c) => <th key={c.key} className="text-left px-3 py-2 whitespace-nowrap">{c.label}</th>)}</tr></thead>
-          <tbody>
-            {shown.map((r) => (
-              <tr key={r.unit} className="border-t border-slate-100 hover:bg-teal-50/50" data-testid={`combined-row-${slug(r.unit)}`}>
-                <td className="px-3 py-2 font-num font-bold">{r.rank ?? "—"}</td>
-                <td className="px-3 py-2 font-medium whitespace-nowrap">{r.unit}</td>
-                <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{r.range}</td>
-                <td className="px-3 py-2 font-num">{fmt(r.conviction_score)}</td>
-                <td className="px-3 py-2 font-num text-slate-500">{r.conviction_rank ?? "—"}</td>
-                <td className="px-3 py-2 font-num">{fmt(r.timeliness_score)}</td>
-                <td className="px-3 py-2 font-num text-slate-500">{r.timeliness_rank ?? "—"}</td>
-                <td className="px-3 py-2 font-num">{fmt(r.emergency112_score)}</td>
-                <td className="px-3 py-2 font-num text-slate-500">{r.emergency112_rank ?? "—"}</td>
-                <td className="px-3 py-2 font-num">{fmt(r.hsp_score)}</td>
-                <td className="px-3 py-2 font-num text-slate-500">{r.hsp_rank ?? "—"}</td>
-                <td className="px-3 py-2 font-num">{fmt(r.training_score)}</td>
-                <td className="px-3 py-2 font-num text-slate-500">{r.training_rank ?? "—"}</td>
-                <td className="px-3 py-2 font-num">{fmt(r.antf_score)}</td>
-                <td className="px-3 py-2 font-num text-slate-500">{r.antf_rank ?? "—"}</td>
-                <td className="px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <div className="h-1.5 w-20 bg-slate-100 rounded-sm overflow-hidden"><div className="h-full bg-brand-navy" style={{ width: `${Math.max(0, r.combined_score || 0)}%` }} /></div>
-                    <span className="font-num font-bold text-brand-navy">{fmt(r.combined_score)}</span>
-                  </div>
-                </td>
-                <td className="px-3 py-2"><CategoryBadge value={r.category} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {rows.length > 10 && (
-        <button onClick={() => setAll(!all)} className="mt-3 text-sm text-brand-navy hover:text-teal-700 font-medium" data-testid="combined-toggle-all">
-          {all ? "Show top 10 only" : `Show all ${rows.length} units`}
-        </button>
+      right={(
+        <ExportMenu
+          title={`Combined radar - ${activeUnit}`}
+          view="combined-radar"
+          columns={EXPORT_COLS}
+          rows={radarData.map((d) => ({ subject: d.subject, score: d.score }))}
+          context={{ Unit: activeUnit, Weight: label }}
+          testId="combined-export"
+        />
       )}
+    >
+      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-5 items-start" data-testid="combined-radar">
+        <div className="space-y-4">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.14em] font-semibold text-slate-500 mb-1.5">Unit</div>
+            <Select value={activeUnit} onValueChange={setUnit}>
+              <SelectTrigger
+                className="h-9 rounded-sm bg-white text-sm border-slate-200 focus:ring-2 focus:ring-teal-600/35"
+                data-testid="combined-unit-select"
+              >
+                <SelectValue placeholder="Select unit" />
+              </SelectTrigger>
+              <SelectContent className="max-h-72 rounded-sm">
+                {rows.map((r) => (
+                  <SelectItem key={r.unit} value={r.unit}>
+                    {r.rank != null ? `#${r.rank} · ` : ""}{r.unit}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {selected && (
+            <div className="space-y-3 rounded-sm border border-slate-200 bg-slate-50/70 p-3">
+              <div>
+                <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Range</div>
+                <div className="text-sm text-slate-800 mt-0.5">{selected.range || "—"}</div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Combined</div>
+                  <div className="font-num text-xl font-bold text-brand-navy mt-0.5">{fmt(selected.combined_score)}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Rank</div>
+                  <div className="font-num text-xl font-bold text-slate-800 mt-0.5">
+                    {selected.rank == null ? "—" : `#${selected.rank}`}
+                  </div>
+                </div>
+              </div>
+              {selected.category && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1">Category</div>
+                  <CategoryBadge value={selected.category} />
+                </div>
+              )}
+              <div className="space-y-1.5 pt-1 border-t border-slate-200">
+                {AXES.map((a) => (
+                  <div key={a.key} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-slate-600 truncate">{a.label}</span>
+                    <span className="font-num font-semibold text-slate-900 shrink-0">{fmt(selected[a.key])}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="min-w-0">
+          <div className="h-[340px] w-full" data-testid="combined-radar-chart">
+            <ResponsiveContainer>
+              <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="72%">
+                <PolarGrid stroke={CHART.grid} />
+                <PolarAngleAxis
+                  dataKey="subject"
+                  tick={{ fill: CHART.tick, fontSize: 12, fontWeight: 600 }}
+                />
+                <PolarRadiusAxis
+                  angle={90}
+                  domain={[0, 100]}
+                  tick={{ fill: CHART.tick, fontSize: 10 }}
+                  tickCount={5}
+                />
+                <Tooltip content={<TipBox />} />
+                <Radar
+                  name="Score"
+                  dataKey="score"
+                  stroke={CHART.navy}
+                  fill={CHART.navy}
+                  fillOpacity={0.28}
+                  strokeWidth={2}
+                  isAnimationActive
+                  animationDuration={CHART.animationDuration}
+                />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="text-[11px] text-slate-500 text-center mt-1">
+            Scores for Conviction, 60-90 Charge Sheet, 112, and HSP (0–100)
+          </p>
+        </div>
+      </div>
     </Panel>
   );
 }

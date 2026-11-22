@@ -611,17 +611,62 @@ def _state_rate(facts, units, period):
     return rate(num, den)
 
 
-def enrich(domain, rows, data, types, type_, periods, base, latest, policy):
+def _prev_ranks_for_window(domain, facts, units, prev_window, policy):
+    if not prev_window:
+        return {}, None
+    prev_rows, _ = score_units(domain, facts, units, *prev_window, policy)
+    return {r["unit"]: r["rank"] for r in prev_rows if r.get("rank") is not None}, prev_window
+
+
+def _112_movement_from_monthly(monthly_facts, units, policy):
+    """
+    When the active grain has no prior window (e.g. half-yearly with 2 periods starting at index 0,
+    or yearly with a single year), derive rank movement from half-yearly snapshots built from months.
+    """
+    try:
+        from backend.period_grain import aggregate_112_facts
+    except ModuleNotFoundError:
+        from period_grain import aggregate_112_facts
+
+    if not monthly_facts:
+        return {}, None
+    half_facts, half_periods = aggregate_112_facts(monthly_facts, "half_yearly")
+    if len(half_periods) < 2:
+        return {}, None
+    # Previous = first half only; current = first→second half (same shape as a 2-period grain)
+    prev_b, cur_b, cur_l = half_periods[-2], half_periods[-2], half_periods[-1]
+    prev_rows, _ = score_units("emergency112", half_facts, units, prev_b, prev_b, policy)
+    cur_rows, _ = score_units("emergency112", half_facts, units, cur_b, cur_l, policy)
+    prev = {r["unit"]: r["rank"] for r in prev_rows if r.get("rank") is not None}
+    cur = {r["unit"]: r["rank"] for r in cur_rows if r.get("rank") is not None}
+    movement = {}
+    for u, pr in prev.items():
+        cr = cur.get(u)
+        if cr is not None:
+            movement[u] = pr - cr
+    return movement, (prev_b, cur_l)
+
+
+def enrich(domain, rows, data, types, type_, periods, base, latest, policy, monthly_facts=None):
     """Section A indicators: acquittal / pending, Session-JMFC gap, consistency, rank movement, workload share."""
     entry = data[type_]
     facts, units = entry["facts"], entry["units"]
     state_latest = sum(r["latest_den"] for r in rows)
     ib, il = periods.index(base), periods.index(latest)
     prev, prev_window = {}, None
+    movement_override = None
     if ib > 0 and il > 0:
-        prev_window = (periods[ib - 1], periods[il - 1])
-        prev_rows, _ = score_units(domain, facts, units, *prev_window, policy)
-        prev = {r["unit"]: r["rank"] for r in prev_rows}
+        # Equal-span prior window (e.g. monthly Aug→Sep vs Jul→Aug)
+        prev, prev_window = _prev_ranks_for_window(
+            domain, facts, units, (periods[ib - 1], periods[il - 1]), policy,
+        )
+    elif ib == 0 and il > ib:
+        # Coarse grains often start at the first bucket (half-yearly/yearly with 2 periods).
+        # Compare ranks from a base-only snapshot vs the current base→latest window.
+        prev, prev_window = _prev_ranks_for_window(domain, facts, units, (base, base), policy)
+    elif domain == "emergency112" and ib == il:
+        # Single period (typical yearly with one calendar year) — fall back to half-year movement
+        movement_override, prev_window = _112_movement_from_monthly(monthly_facts or facts, units, policy)
     jmfc, session = (data.get(types[0]), data.get(types[1])) if len(types) >= 2 else (None, None)
     for r in rows:
         u = r["unit"]
@@ -635,8 +680,17 @@ def enrich(domain, rows, data, types, type_, periods, base, latest, policy):
         else:
             vals = [v for v in (_rate_at(facts, u, p) for p in periods) if v is not None]
         r["volatility"] = pstdev(vals) if len(vals) > 1 else None
-        r["prev_rank"] = prev.get(u)
-        r["rank_movement"] = r["prev_rank"] - r["rank"] if r["prev_rank"] and r["rank"] else None
+        if movement_override is not None:
+            move = movement_override.get(u)
+            r["prev_rank"] = None if move is None else (r["rank"] + move if r.get("rank") is not None else None)
+            r["rank_movement"] = move
+        else:
+            r["prev_rank"] = prev.get(u)
+            r["rank_movement"] = (
+                r["prev_rank"] - r["rank"]
+                if r.get("prev_rank") is not None and r.get("rank") is not None
+                else None
+            )
         if domain == "conviction":
             r["base_acquittal_rate"] = None if r["base_rate"] is None else 100 - r["base_rate"]
             r["latest_acquittal_rate"] = None if r["latest_rate"] is None else 100 - r["latest_rate"]
@@ -812,6 +866,1356 @@ def totals(domain, rows):
     t["unit_count"] = len(rows)
     t["scored_count"] = len(scored)
     return t
+
+
+_RANGE_DISPLAY = {
+    "Total Commrs.": "Commissionerates",
+    "Total Commrs": "Commissionerates",
+}
+
+
+def _display_range(name: str) -> str:
+    return _RANGE_DISPLAY.get(name, name)
+
+
+def _sum_period(facts_by_unit_period, units, period):
+    den = num = 0.0
+    for unit, rng in units:
+        f = facts_by_unit_period.get((unit, period))
+        if not f:
+            continue
+        den += f.get("den") or 0
+        num += f.get("num") or 0
+    return den, num
+
+
+def _sum_period_full(facts_by_unit_period, units, period):
+    den = num = beyond = 0.0
+    for unit, rng in units:
+        f = facts_by_unit_period.get((unit, period))
+        if not f:
+            continue
+        den += f.get("den") or 0
+        num += f.get("num") or 0
+        beyond += f.get("beyond") or 0
+    return den, num, beyond
+
+
+def conviction_executive(data, rows, periods, base, latest, type_):
+    """Statewide Executive Dashboard series (Conviction_Performance_Dashboards.xlsm)."""
+    entry = data.get(type_) or {}
+    facts = entry.get("facts") or {}
+    units = entry.get("units") or []
+
+    period_trend = []
+    for p in periods:
+        den, num = _sum_period(facts, units, p)
+        period_trend.append({
+            "period": p,
+            "trials": den,
+            "convicted": num,
+            "rate": rate(num, den),
+        })
+
+    range_map = {}
+    for unit, rng in units:
+        key = rng or "Unassigned"
+        bucket = range_map.setdefault(key, {"base_den": 0.0, "base_num": 0.0, "latest_den": 0.0, "latest_num": 0.0})
+        bf = facts.get((unit, base))
+        lf = facts.get((unit, latest))
+        if bf:
+            bucket["base_den"] += bf.get("den") or 0
+            bucket["base_num"] += bf.get("num") or 0
+        if lf:
+            bucket["latest_den"] += lf.get("den") or 0
+            bucket["latest_num"] += lf.get("num") or 0
+    range_rates = []
+    for rng, b in range_map.items():
+        br = rate(b["base_num"], b["base_den"])
+        lr = rate(b["latest_num"], b["latest_den"])
+        range_rates.append({
+            "range": _display_range(rng),
+            "base_rate": br,
+            "latest_rate": lr,
+        })
+    range_rates.sort(key=lambda x: -(x["latest_rate"] if x["latest_rate"] is not None else -1))
+
+    improved = [r for r in rows if r.get("improvement") is not None and r["improvement"] > 0]
+    declined = [r for r in rows if r.get("improvement") is not None and r["improvement"] < 0]
+    gains = sorted(improved, key=lambda r: -r["improvement"])[:3]
+    drops = sorted(declined, key=lambda r: r["improvement"])[:3]
+    movers = []
+    for r in gains:
+        movers.append({"unit": r["unit"], "improvement": r["improvement"], "side": "gain"})
+    for r in drops:
+        movers.append({"unit": r["unit"], "improvement": r["improvement"], "side": "decline"})
+
+    court_types = [t for t in ("JMFC", "Session") if t in data]
+    type_rates = []
+    type_trial_share = []
+    for ct in court_types:
+        c_entry = data[ct]
+        c_facts = c_entry.get("facts") or {}
+        c_units = c_entry.get("units") or []
+        bd, bn = _sum_period(c_facts, c_units, base)
+        ld, ln = _sum_period(c_facts, c_units, latest)
+        type_rates.append({
+            "type": ct,
+            "base_rate": rate(bn, bd),
+            "latest_rate": rate(ln, ld),
+        })
+        type_trial_share.append({"type": ct, "trials": ld})
+
+    tot = totals("conviction", rows)
+    return {
+        "type": type_,
+        "base": base,
+        "latest": latest,
+        "unit_count": tot["unit_count"],
+        "units_improved": len(improved),
+        "kpis": {
+            "latest_rate": tot["latest_rate"],
+            "base_rate": tot["base_rate"],
+            "improvement": tot["improvement"],
+            "latest_trials": tot["latest_den"],
+            "latest_convicted": tot["latest_num"],
+            "base_trials": tot["base_den"],
+            "base_convicted": tot["base_num"],
+        },
+        "period_trend": period_trend,
+        "range_rates": range_rates,
+        "movers": movers,
+        "type_rates": type_rates,
+        "type_trial_share": type_trial_share,
+    }
+
+
+def _period_rate_for_unit(facts, unit, period):
+    f = facts.get((unit, period))
+    if not f:
+        return None, 0.0, 0.0
+    den = f.get("den") or 0
+    num = f.get("num") or 0
+    return rate(num, den), den, num
+
+
+def _csv_filter(raw, allowed):
+    """Parse All / comma-separated filter into a list of allowed values (empty = All)."""
+    if raw is None:
+        return []
+    if isinstance(raw, (list, tuple)):
+        parts = [str(p).strip() for p in raw if str(p).strip()]
+    else:
+        s = str(raw).strip()
+        if not s or s == "All":
+            return []
+        parts = [p.strip() for p in s.split(",") if p.strip()]
+    allowed_set = set(allowed)
+    return [p for p in parts if p in allowed_set and p != "All"]
+
+
+def _selection_label(selected, all_label="All"):
+    if not selected:
+        return all_label
+    if len(selected) == 1:
+        return selected[0]
+    if len(selected) == 2:
+        return f"{selected[0]}, {selected[1]}"
+    return f"{selected[0]} +{len(selected) - 1}"
+
+
+def conviction_detailed(data, periods, policy, unit, type_, base, latest, range_filter="All", category="All"):
+    """Unit-level Detailed Dashboard series (Conviction_Performance_Dashboards.xlsm).
+
+    ``unit`` / ``range_filter`` may be ``All``, a single name, or a comma-separated multi-select.
+    ``category`` mirrors Unit rankings Rank category (``All`` or a rank band label).
+    """
+    type_ = type_ if type_ in data else (list(data.keys())[-1] if data else type_)
+    entry = data.get(type_) or {"facts": {}, "units": []}
+    facts = entry.get("facts") or {}
+    units = entry.get("units") or []
+    unit_names = sorted({u for u, _ in units})
+    ranges = sorted({r for _, r in units if r})
+    unit_ranges = {u: r for u, r in units}
+    category = category if category and category != "All" else "All"
+
+    sel_units = _csv_filter(unit, unit_names)
+    sel_ranges = _csv_filter(range_filter, ranges)
+    single_unit = len(sel_units) == 1
+    all_units = not sel_units
+    unit_label = _selection_label(sel_units, "All")
+    focus_pairs = units if all_units else [(u, r) for u, r in units if u in sel_units]
+    unit_range = unit_ranges.get(sel_units[0], "") if single_unit else ""
+
+    rows, _ = score_units("conviction", facts, units, base, latest, policy)
+    row = next((r for r in rows if r["unit"] == sel_units[0]), None) if single_unit else None
+    focus_rows = rows if all_units else [r for r in rows if r["unit"] in sel_units]
+    if all_units and category != "All":
+        focus_rows = [r for r in focus_rows if r.get("category") == category]
+        focus_names = {r["unit"] for r in focus_rows}
+        focus_pairs = [(u, r) for u, r in units if u in focus_names]
+    focus_tot = totals("conviction", focus_rows) if focus_rows else {}
+    state = totals("conviction", rows)
+    state_latest = state.get("latest_rate")
+    state_base = state.get("base_rate")
+
+    range_rows = [r for r in rows if r.get("range") == unit_range] if unit_range else []
+    range_tot = totals("conviction", range_rows) if range_rows else {}
+
+    unit_trend = []
+    for p in periods:
+        sd, sn = _sum_period(facts, units, p)
+        state_rate = rate(sn, sd)
+        if single_unit:
+            ur, ud, un = _period_rate_for_unit(facts, sel_units[0], p)
+        else:
+            ud, un = _sum_period(facts, focus_pairs, p)
+            ur = rate(un, ud)
+        unit_trend.append({"period": p, "trials": ud, "convicted": un, "rate": ur, "state_rate": state_rate})
+
+    if single_unit:
+        comparison = [
+            {
+                "label": sel_units[0],
+                "base_rate": row.get("base_rate") if row else None,
+                "latest_rate": row.get("latest_rate") if row else None,
+            },
+            {
+                "label": _display_range(unit_range) or "Range",
+                "base_rate": range_tot.get("base_rate"),
+                "latest_rate": range_tot.get("latest_rate"),
+            },
+            {
+                "label": "Statewide",
+                "base_rate": state_base,
+                "latest_rate": state_latest,
+            },
+        ]
+    else:
+        comparison = [
+            {
+                "label": ("All units" if all_units and category == "All"
+                          else (category if all_units else unit_label)),
+                "base_rate": focus_tot.get("base_rate"),
+                "latest_rate": focus_tot.get("latest_rate"),
+            },
+        ]
+        if sel_ranges:
+            scoped = [r for r in rows if r.get("range") in sel_ranges]
+            if category != "All":
+                scoped = [r for r in scoped if r.get("category") == category]
+            scoped_tot = totals("conviction", scoped) if scoped else {}
+            comparison.append({
+                "label": _selection_label([_display_range(r) or r for r in sel_ranges], "Ranges"),
+                "base_rate": scoped_tot.get("base_rate"),
+                "latest_rate": scoped_tot.get("latest_rate"),
+            })
+        if not all_units or category != "All":
+            comparison.append({
+                "label": "Statewide",
+                "base_rate": state_base,
+                "latest_rate": state_latest,
+            })
+
+    scope_rows = rows if not sel_ranges else [r for r in rows if r.get("range") in sel_ranges]
+    if category != "All":
+        scope_rows = [r for r in scope_rows if r.get("category") == category]
+    top_scores = sorted(
+        [r for r in scope_rows if r.get("overall_score") is not None],
+        key=lambda r: -r["overall_score"],
+    )[:5]
+    top_scores = [
+        {"unit": r["unit"], "rank": r.get("rank"), "overall_score": r["overall_score"], "label": f"#{r.get('rank')}  {r['unit']}"}
+        for r in top_scores
+    ]
+
+    court_rates = []
+    for ct in [t for t in ("JMFC", "Session") if t in data]:
+        c_entry = data[ct] or {}
+        c_facts = c_entry.get("facts") or {}
+        c_units = c_entry.get("units") or units
+        if single_unit:
+            c_focus = [(u, r) for u, r in c_units if u == sel_units[0]]
+            br, _, _ = _period_rate_for_unit(c_facts, sel_units[0], base)
+            lr, ld, ln = _period_rate_for_unit(c_facts, sel_units[0], latest)
+        else:
+            focus_names = {u for u, _ in focus_pairs}
+            c_focus = [(u, r) for u, r in c_units if u in focus_names] if focus_names else c_units
+            bd, bn = _sum_period(c_facts, c_focus, base)
+            ld, ln = _sum_period(c_facts, c_focus, latest)
+            br, lr = rate(bn, bd), rate(ln, ld)
+        court_rates.append({
+            "type": ct,
+            "base_rate": br,
+            "latest_rate": lr,
+            "latest_trials": ld,
+            "latest_convicted": ln,
+        })
+
+    w = float((policy.get("conviction") or {}).get("perf_weight", 0.7))
+    if single_unit:
+        perf = (row or {}).get("performance_score")
+        imp_score = (row or {}).get("improvement_score")
+        perf_points = None if perf is None else perf * w
+        imp_points = None if imp_score is None else imp_score * (1.0 - w)
+        unit_latest = (row or {}).get("latest_rate")
+        unit_base = (row or {}).get("base_rate")
+        improvement = (row or {}).get("improvement")
+        gap_to_state = (
+            unit_latest - state_latest
+            if unit_latest is not None and state_latest is not None else None
+        )
+        latest_trials = (row or {}).get("latest_den")
+        latest_convicted = (row or {}).get("latest_num")
+        base_trials = (row or {}).get("base_den")
+        base_convicted = (row or {}).get("base_num")
+        rank = (row or {}).get("rank")
+        unit_category = (row or {}).get("category")
+        overall = (row or {}).get("overall_score")
+    else:
+        perf = imp_score = perf_points = imp_points = None
+        unit_latest = focus_tot.get("latest_rate")
+        unit_base = focus_tot.get("base_rate")
+        improvement = focus_tot.get("improvement")
+        gap_to_state = (
+            None if all_units else (
+                unit_latest - state_latest
+                if unit_latest is not None and state_latest is not None else None
+            )
+        )
+        latest_trials = focus_tot.get("latest_den")
+        latest_convicted = focus_tot.get("latest_num")
+        base_trials = focus_tot.get("base_den")
+        base_convicted = focus_tot.get("base_num")
+        rank = unit_category = overall = None
+
+    score_points = [
+        {
+            "component": "Relative conviction rate",
+            "earned": perf_points,
+            "remaining": None if perf_points is None else max(0.0, 100.0 * w - perf_points),
+            "maximum": 100.0 * w,
+        },
+        {
+            "component": "Rate improvement",
+            "earned": imp_points,
+            "remaining": None if imp_points is None else max(0.0, 100.0 * (1.0 - w) - imp_points),
+            "maximum": 100.0 * (1.0 - w),
+        },
+    ]
+
+    return {
+        "unit": unit_label if all_units else ",".join(sel_units),
+        "units_selected": sel_units,
+        "selection_mode": "single" if single_unit else ("all" if all_units else "multi"),
+        "range": unit_range,
+        "type": type_,
+        "base": base,
+        "latest": latest,
+        "range_filter": "All" if not sel_ranges else ",".join(sel_ranges),
+        "ranges_selected": sel_ranges,
+        "category": category,
+        "units": unit_names,
+        "ranges": ranges,
+        "unit_ranges": unit_ranges,
+        "kpis": {
+            "latest_rate": unit_latest,
+            "base_rate": unit_base,
+            "improvement": improvement,
+            "gap_to_state": gap_to_state,
+            "latest_trials": latest_trials,
+            "latest_convicted": latest_convicted,
+            "base_trials": base_trials,
+            "base_convicted": base_convicted,
+            "rank": rank,
+            "category": unit_category,
+            "overall_score": overall,
+            "performance_score": perf,
+            "improvement_score": imp_score,
+        },
+        "unit_trend": unit_trend,
+        "comparison": comparison,
+        "top_scores": top_scores,
+        "court_rates": court_rates,
+        "score_points": score_points,
+        "state_rate": state_latest,
+    }
+
+
+def timeliness_executive(data, rows, periods, base, latest, type_):
+    """Statewide Executive Dashboard series (Dashboard_60_90_Executive_and_Detailed.xlsm)."""
+    entry = data.get(type_) or {}
+    facts = entry.get("facts") or {}
+    units = entry.get("units") or []
+
+    period_trend = []
+    for p in periods:
+        den, num, beyond = _sum_period_full(facts, units, p)
+        period_trend.append({
+            "period": p,
+            "registered": den,
+            "within": num,
+            "beyond": beyond,
+            "rate": rate(num, den),
+            "beyond_rate": rate(beyond, den),
+        })
+
+    range_map = {}
+    for unit, rng in units:
+        key = rng or "Unassigned"
+        bucket = range_map.setdefault(
+            key, {"base_den": 0.0, "base_num": 0.0, "latest_den": 0.0, "latest_num": 0.0},
+        )
+        bf = facts.get((unit, base))
+        lf = facts.get((unit, latest))
+        if bf:
+            bucket["base_den"] += bf.get("den") or 0
+            bucket["base_num"] += bf.get("num") or 0
+        if lf:
+            bucket["latest_den"] += lf.get("den") or 0
+            bucket["latest_num"] += lf.get("num") or 0
+    range_rates = []
+    for rng, b in range_map.items():
+        range_rates.append({
+            "range": _display_range(rng),
+            "base_rate": rate(b["base_num"], b["base_den"]),
+            "latest_rate": rate(b["latest_num"], b["latest_den"]),
+        })
+    range_rates.sort(key=lambda x: -(x["latest_rate"] if x["latest_rate"] is not None else -1))
+
+    improved = [r for r in rows if r.get("improvement") is not None and r["improvement"] > 0]
+    declined = [r for r in rows if r.get("improvement") is not None and r["improvement"] < 0]
+    gains = sorted(improved, key=lambda r: -r["improvement"])[:3]
+    drops = sorted(declined, key=lambda r: r["improvement"])[:3]
+    movers = []
+    for r in gains:
+        movers.append({"unit": r["unit"], "improvement": r["improvement"], "side": "gain"})
+    for r in drops:
+        movers.append({"unit": r["unit"], "improvement": r["improvement"], "side": "decline"})
+
+    deadline_types = [t for t in ("60 Day", "90 Day") if t in data]
+    type_rates = []
+    for ct in deadline_types:
+        c_entry = data[ct]
+        c_facts = c_entry.get("facts") or {}
+        c_units = c_entry.get("units") or []
+        bd, bn, _ = _sum_period_full(c_facts, c_units, base)
+        ld, ln, _ = _sum_period_full(c_facts, c_units, latest)
+        type_rates.append({
+            "type": ct,
+            "base_rate": rate(bn, bd),
+            "latest_rate": rate(ln, ld),
+        })
+
+    late_units = sorted(
+        [r for r in rows if (r.get("latest_beyond") or 0) > 0],
+        key=lambda r: -(r.get("latest_beyond") or 0),
+    )[:5]
+    late_units = [{"unit": r["unit"], "beyond": r.get("latest_beyond") or 0} for r in late_units]
+
+    tot = totals("timeliness", rows)
+    return {
+        "type": type_,
+        "base": base,
+        "latest": latest,
+        "unit_count": tot["unit_count"],
+        "units_improved": len(improved),
+        "kpis": {
+            "latest_rate": tot["latest_rate"],
+            "base_rate": tot["base_rate"],
+            "improvement": tot["improvement"],
+            "latest_registered": tot["latest_den"],
+            "latest_within": tot["latest_num"],
+            "latest_beyond": tot["latest_beyond"],
+            "latest_beyond_rate": tot.get("latest_beyond_rate"),
+            "base_registered": tot["base_den"],
+            "base_within": tot["base_num"],
+            "base_beyond": tot["base_beyond"],
+        },
+        "period_trend": period_trend,
+        "range_rates": range_rates,
+        "movers": movers,
+        "type_rates": type_rates,
+        "late_units": late_units,
+    }
+
+
+def _period_counts_for_unit(facts, unit, period):
+    f = facts.get((unit, period))
+    if not f:
+        return None, None, 0.0, 0.0, 0.0
+    den = f.get("den") or 0
+    num = f.get("num") or 0
+    beyond = f.get("beyond") or 0
+    return rate(num, den), rate(beyond, den), den, num, beyond
+
+
+def timeliness_detailed(data, periods, policy, unit, type_, base, latest, range_filter="All", category="All"):
+    """Unit-level Detailed Dashboard series (Dashboard_60_90_Executive_and_Detailed.xlsm)."""
+    type_ = type_ if type_ in data else (list(data.keys())[-1] if data else type_)
+    entry = data.get(type_) or {"facts": {}, "units": []}
+    facts = entry.get("facts") or {}
+    units = entry.get("units") or []
+    unit_names = sorted({u for u, _ in units})
+    ranges = sorted({r for _, r in units if r})
+    unit_ranges = {u: r for u, r in units}
+    category = category if category and category != "All" else "All"
+
+    sel_units = _csv_filter(unit, unit_names)
+    sel_ranges = _csv_filter(range_filter, ranges)
+    single_unit = len(sel_units) == 1
+    all_units = not sel_units
+    unit_label = _selection_label(sel_units, "All")
+    focus_pairs = units if all_units else [(u, r) for u, r in units if u in sel_units]
+    unit_range = unit_ranges.get(sel_units[0], "") if single_unit else ""
+
+    rows, _ = score_units("timeliness", facts, units, base, latest, policy)
+    row = next((r for r in rows if r["unit"] == sel_units[0]), None) if single_unit else None
+    focus_rows = rows if all_units else [r for r in rows if r["unit"] in sel_units]
+    if all_units and category != "All":
+        focus_rows = [r for r in focus_rows if r.get("category") == category]
+        focus_names = {r["unit"] for r in focus_rows}
+        focus_pairs = [(u, r) for u, r in units if u in focus_names]
+    focus_tot = totals("timeliness", focus_rows) if focus_rows else {}
+    state = totals("timeliness", rows)
+    state_latest = state.get("latest_rate")
+    state_base = state.get("base_rate")
+
+    range_rows = [r for r in rows if r.get("range") == unit_range] if unit_range else []
+    range_tot = totals("timeliness", range_rows) if range_rows else {}
+
+    unit_trend = []
+    for p in periods:
+        sd, sn, sb = _sum_period_full(facts, units, p)
+        state_rate = rate(sn, sd)
+        state_beyond_rate = rate(sb, sd)
+        if single_unit:
+            ur, ubr, ud, un, ubeyond = _period_counts_for_unit(facts, sel_units[0], p)
+        else:
+            ud, un, ubeyond = _sum_period_full(facts, focus_pairs, p)
+            ur, ubr = rate(un, ud), rate(ubeyond, ud)
+        unit_trend.append({
+            "period": p,
+            "registered": ud,
+            "within": un,
+            "beyond": ubeyond,
+            "rate": ur,
+            "beyond_rate": ubr,
+            "state_rate": state_rate,
+            "state_beyond_rate": state_beyond_rate,
+        })
+
+    if single_unit:
+        comparison = [
+            {
+                "label": sel_units[0],
+                "base_rate": row.get("base_rate") if row else None,
+                "latest_rate": row.get("latest_rate") if row else None,
+            },
+            {
+                "label": _display_range(unit_range) or "Range",
+                "base_rate": range_tot.get("base_rate"),
+                "latest_rate": range_tot.get("latest_rate"),
+            },
+            {
+                "label": "Statewide",
+                "base_rate": state_base,
+                "latest_rate": state_latest,
+            },
+        ]
+    else:
+        comparison = [
+            {
+                "label": ("All units" if all_units and category == "All"
+                          else (category if all_units else unit_label)),
+                "base_rate": focus_tot.get("base_rate"),
+                "latest_rate": focus_tot.get("latest_rate"),
+            },
+        ]
+        if sel_ranges:
+            scoped = [r for r in rows if r.get("range") in sel_ranges]
+            if category != "All":
+                scoped = [r for r in scoped if r.get("category") == category]
+            scoped_tot = totals("timeliness", scoped) if scoped else {}
+            comparison.append({
+                "label": _selection_label([_display_range(r) or r for r in sel_ranges], "Ranges"),
+                "base_rate": scoped_tot.get("base_rate"),
+                "latest_rate": scoped_tot.get("latest_rate"),
+            })
+        if not all_units or category != "All":
+            comparison.append({
+                "label": "Statewide",
+                "base_rate": state_base,
+                "latest_rate": state_latest,
+            })
+
+    scope_rows = rows if not sel_ranges else [r for r in rows if r.get("range") in sel_ranges]
+    if category != "All":
+        scope_rows = [r for r in scope_rows if r.get("category") == category]
+    top_scores = sorted(
+        [r for r in scope_rows if r.get("overall_score") is not None],
+        key=lambda r: -r["overall_score"],
+    )[:5]
+    top_scores = [
+        {"unit": r["unit"], "rank": r.get("rank"), "overall_score": r["overall_score"],
+         "label": f"#{r.get('rank')}  {r['unit']}"}
+        for r in top_scores
+    ]
+
+    deadline_rates = []
+    for ct in [t for t in ("60 Day", "90 Day") if t in data]:
+        c_entry = data[ct] or {}
+        c_facts = c_entry.get("facts") or {}
+        c_units = c_entry.get("units") or units
+        if single_unit:
+            br, _, _, _, _ = _period_counts_for_unit(c_facts, sel_units[0], base)
+            lr, _, ld, ln, lb = _period_counts_for_unit(c_facts, sel_units[0], latest)
+        else:
+            focus_names = {u for u, _ in focus_pairs}
+            c_focus = [(u, r) for u, r in c_units if u in focus_names] if focus_names else c_units
+            bd, bn, _ = _sum_period_full(c_facts, c_focus, base)
+            ld, ln, lb = _sum_period_full(c_facts, c_focus, latest)
+            br, lr = rate(bn, bd), rate(ln, ld)
+        deadline_rates.append({
+            "type": ct,
+            "base_rate": br,
+            "latest_rate": lr,
+            "latest_registered": ld,
+            "latest_within": ln,
+            "latest_beyond": lb,
+        })
+
+    w = float((policy.get("timeliness") or {}).get("perf_weight", 0.7))
+    if single_unit:
+        perf = (row or {}).get("performance_score")
+        imp_score = (row or {}).get("improvement_score")
+        perf_points = None if perf is None else perf * w
+        imp_points = None if imp_score is None else imp_score * (1.0 - w)
+        unit_latest = (row or {}).get("latest_rate")
+        unit_base = (row or {}).get("base_rate")
+        improvement = (row or {}).get("improvement")
+        beyond_change = (row or {}).get("beyond_change")
+        gap_to_state = (
+            unit_latest - state_latest
+            if unit_latest is not None and state_latest is not None else None
+        )
+        latest_registered = (row or {}).get("latest_den")
+        latest_within = (row or {}).get("latest_num")
+        latest_beyond = (row or {}).get("latest_beyond")
+        base_registered = (row or {}).get("base_den")
+        base_within = (row or {}).get("base_num")
+        base_beyond = (row or {}).get("base_beyond")
+        rank = (row or {}).get("rank")
+        unit_category = (row or {}).get("category")
+        overall = (row or {}).get("overall_score")
+    else:
+        perf = imp_score = perf_points = imp_points = None
+        unit_latest = focus_tot.get("latest_rate")
+        unit_base = focus_tot.get("base_rate")
+        improvement = focus_tot.get("improvement")
+        beyond_change = None
+        if focus_tot.get("latest_beyond_rate") is not None and focus_tot.get("base_beyond_rate") is not None:
+            beyond_change = focus_tot["latest_beyond_rate"] - focus_tot["base_beyond_rate"]
+        gap_to_state = (
+            None if all_units else (
+                unit_latest - state_latest
+                if unit_latest is not None and state_latest is not None else None
+            )
+        )
+        latest_registered = focus_tot.get("latest_den")
+        latest_within = focus_tot.get("latest_num")
+        latest_beyond = focus_tot.get("latest_beyond")
+        base_registered = focus_tot.get("base_den")
+        base_within = focus_tot.get("base_num")
+        base_beyond = focus_tot.get("base_beyond")
+        rank = unit_category = overall = None
+
+    # Late-rate reduction is positive when beyond rate falls
+    late_reduction = None if beyond_change is None else -beyond_change
+
+    score_points = [
+        {
+            "component": "Relative in-time rate",
+            "earned": perf_points,
+            "remaining": None if perf_points is None else max(0.0, 100.0 * w - perf_points),
+            "maximum": 100.0 * w,
+        },
+        {
+            "component": "Rate improvement",
+            "earned": imp_points,
+            "remaining": None if imp_points is None else max(0.0, 100.0 * (1.0 - w) - imp_points),
+            "maximum": 100.0 * (1.0 - w),
+        },
+    ]
+
+    return {
+        "unit": unit_label if all_units else ",".join(sel_units),
+        "units_selected": sel_units,
+        "selection_mode": "single" if single_unit else ("all" if all_units else "multi"),
+        "range": unit_range,
+        "type": type_,
+        "base": base,
+        "latest": latest,
+        "range_filter": "All" if not sel_ranges else ",".join(sel_ranges),
+        "ranges_selected": sel_ranges,
+        "category": category,
+        "units": unit_names,
+        "ranges": ranges,
+        "unit_ranges": unit_ranges,
+        "kpis": {
+            "latest_rate": unit_latest,
+            "base_rate": unit_base,
+            "improvement": improvement,
+            "late_reduction": late_reduction,
+            "gap_to_state": gap_to_state,
+            "latest_registered": latest_registered,
+            "latest_within": latest_within,
+            "latest_beyond": latest_beyond,
+            "base_registered": base_registered,
+            "base_within": base_within,
+            "base_beyond": base_beyond,
+            "rank": rank,
+            "category": unit_category,
+            "overall_score": overall,
+            "performance_score": perf,
+            "improvement_score": imp_score,
+        },
+        "unit_trend": unit_trend,
+        "comparison": comparison,
+        "top_scores": top_scores,
+        "deadline_rates": deadline_rates,
+        "score_points": score_points,
+        "state_rate": state_latest,
+    }
+
+
+def _112_period_stats(facts, units, period):
+    """Statewide / selection aggregates for one 112 period (Excel Executive helper)."""
+    den = responded = closed = 0.0
+    times = []
+    for unit, _rng in units:
+        f = facts.get((unit, period))
+        if not f:
+            continue
+        den += f.get("den") or 0
+        responded += f.get("responded") or 0
+        closed += f.get("num") or 0
+        if f.get("total_sec") is not None:
+            times.append(f["total_sec"])
+    mean_sec = sum(times) / len(times) if times else None
+    return {
+        "actionable": den,
+        "responded": responded,
+        "closed_100m": closed,
+        "mean_sec": mean_sec,
+        "mean_minutes": None if mean_sec is None else mean_sec / 60.0,
+        "response_rate": rate(responded, den),
+        # Excel: closures within 100m / actionable calls
+        "closure_rate": rate(closed, den),
+        # App scoring uses closed / responded for unit pct_100m
+        "closure_rate_vs_responded": rate(closed, responded or den),
+    }
+
+
+def emergency112_executive(data, rows, periods, base, latest, type_="All"):
+    """Statewide Executive Dashboard series (Dashboard_112_Executive_and_Detailed.xlsm)."""
+    entry = data.get(type_) or data.get("All") or {}
+    facts = entry.get("facts") or {}
+    units = entry.get("units") or []
+
+    period_trend = []
+    for p in periods:
+        stats = _112_period_stats(facts, units, p)
+        period_trend.append({"period": p, **stats})
+
+    slowest = sorted(
+        [r for r in rows if r.get("latest_total_sec") is not None],
+        key=lambda r: -r["latest_total_sec"],
+    )[:5]
+    slowest_units = [{
+        "unit": r["unit"],
+        "base_minutes": None if r.get("base_total_sec") is None else r["base_total_sec"] / 60.0,
+        "latest_minutes": None if r.get("latest_total_sec") is None else r["latest_total_sec"] / 60.0,
+        "base_sec": r.get("base_total_sec"),
+        "latest_sec": r.get("latest_total_sec"),
+    } for r in slowest]
+
+    with_delta = []
+    for r in rows:
+        if r.get("base_total_sec") is None or r.get("latest_total_sec") is None:
+            continue
+        saved = r["base_total_sec"] - r["latest_total_sec"]
+        with_delta.append({"unit": r["unit"], "seconds_saved": saved})
+    gains = sorted([x for x in with_delta if x["seconds_saved"] > 0], key=lambda x: -x["seconds_saved"])[:3]
+    drops = sorted([x for x in with_delta if x["seconds_saved"] < 0], key=lambda x: x["seconds_saved"])[:3]
+    movers = gains + drops
+
+    tot = totals("emergency112", rows)
+    base_stats = _112_period_stats(facts, units, base)
+    latest_stats = _112_period_stats(facts, units, latest)
+    seconds_saved = None
+    if tot.get("base_total_sec") is not None and tot.get("latest_total_sec") is not None:
+        seconds_saved = tot["base_total_sec"] - tot["latest_total_sec"]
+
+    return {
+        "type": type_,
+        "base": base,
+        "latest": latest,
+        "unit_count": tot["unit_count"],
+        "kpis": {
+            "latest_actionable": latest_stats["actionable"],
+            "base_actionable": base_stats["actionable"],
+            "latest_responded": latest_stats["responded"],
+            "base_responded": base_stats["responded"],
+            "latest_response_rate": latest_stats["response_rate"],
+            "latest_mean_sec": tot.get("latest_total_sec"),
+            "base_mean_sec": tot.get("base_total_sec"),
+            "seconds_saved": seconds_saved,
+            "latest_closure_rate": latest_stats["closure_rate"],
+            "latest_closed_100m": latest_stats["closed_100m"],
+            "base_closed_100m": base_stats["closed_100m"],
+            "latest_pct_100m": tot.get("latest_rate"),
+            "base_pct_100m": tot.get("base_rate"),
+        },
+        "period_trend": period_trend,
+        "slowest_units": slowest_units,
+        "movers": movers,
+    }
+
+
+def emergency112_detailed(data, periods, policy, unit, type_, base, latest, range_filter="All", category="All"):
+    """Unit-level Detailed Dashboard series (Dashboard_112_Executive_and_Detailed.xlsm)."""
+    type_ = type_ if type_ in data else ("All" if "All" in data else (list(data.keys())[-1] if data else type_))
+    entry = data.get(type_) or {"facts": {}, "units": []}
+    facts = entry.get("facts") or {}
+    units = entry.get("units") or []
+    unit_names = sorted({u for u, _ in units})
+    ranges = sorted({r for _, r in units if r})
+    unit_ranges = {u: r for u, r in units}
+    category = category if category and category != "All" else "All"
+
+    sel_units = _csv_filter(unit, unit_names)
+    sel_ranges = _csv_filter(range_filter, ranges)
+    single_unit = len(sel_units) == 1
+    all_units = not sel_units
+    unit_label = _selection_label(sel_units, "All")
+    focus_pairs = units if all_units else [(u, r) for u, r in units if u in sel_units]
+    unit_range = unit_ranges.get(sel_units[0], "") if single_unit else ""
+
+    rows, _ = score_units("emergency112", facts, units, base, latest, policy)
+    row = next((r for r in rows if r["unit"] == sel_units[0]), None) if single_unit else None
+    focus_rows = rows if all_units else [r for r in rows if r["unit"] in sel_units]
+    if all_units and category != "All":
+        focus_rows = [r for r in focus_rows if r.get("category") == category]
+        focus_names = {r["unit"] for r in focus_rows}
+        focus_pairs = [(u, r) for u, r in units if u in focus_names]
+    focus_tot = totals("emergency112", focus_rows) if focus_rows else {}
+    state = totals("emergency112", rows)
+    state_latest_sec = state.get("latest_total_sec")
+    state_base_sec = state.get("base_total_sec")
+
+    unit_trend = []
+    for p in periods:
+        state_stats = _112_period_stats(facts, units, p)
+        if single_unit:
+            f = facts.get((sel_units[0], p)) or {}
+            den = f.get("den") or 0
+            responded = f.get("responded") or 0
+            closed = f.get("num") or 0
+            mean_sec = f.get("total_sec")
+            co_sec, do_sec, mdt_sec = f.get("co_sec"), f.get("do_sec"), f.get("mdt_sec")
+            closure = rate(closed, den)
+        else:
+            sel_stats = _112_period_stats(facts, focus_pairs, p)
+            den = sel_stats["actionable"]
+            responded = sel_stats["responded"]
+            closed = sel_stats["closed_100m"]
+            mean_sec = sel_stats["mean_sec"]
+            closure = sel_stats["closure_rate"]
+            # component means across selection
+            cos, dos, mdts = [], [], []
+            for u, _ in focus_pairs:
+                ff = facts.get((u, p))
+                if not ff:
+                    continue
+                if ff.get("co_sec") is not None:
+                    cos.append(ff["co_sec"])
+                if ff.get("do_sec") is not None:
+                    dos.append(ff["do_sec"])
+                if ff.get("mdt_sec") is not None:
+                    mdts.append(ff["mdt_sec"])
+            co_sec = sum(cos) / len(cos) if cos else None
+            do_sec = sum(dos) / len(dos) if dos else None
+            mdt_sec = sum(mdts) / len(mdts) if mdts else None
+        unit_trend.append({
+            "period": p,
+            "actionable": den,
+            "responded": responded,
+            "closed_100m": closed,
+            "mean_sec": mean_sec,
+            "mean_minutes": None if mean_sec is None else mean_sec / 60.0,
+            "state_minutes": state_stats["mean_minutes"],
+            "closure_rate": closure,
+            "state_closure_rate": state_stats["closure_rate"],
+            "co_minutes": None if co_sec is None else co_sec / 60.0,
+            "do_minutes": None if do_sec is None else do_sec / 60.0,
+            "mdt_minutes": None if mdt_sec is None else mdt_sec / 60.0,
+        })
+
+    # Response components for base vs latest (Excel component chart)
+    component_periods = []
+    for label, period in (("Base", base), ("Latest", latest)):
+        if single_unit:
+            f = facts.get((sel_units[0], period)) or {}
+            co_sec, do_sec, mdt_sec = f.get("co_sec"), f.get("do_sec"), f.get("mdt_sec")
+        else:
+            cos, dos, mdts = [], [], []
+            for u, _ in focus_pairs:
+                ff = facts.get((u, period))
+                if not ff:
+                    continue
+                if ff.get("co_sec") is not None:
+                    cos.append(ff["co_sec"])
+                if ff.get("do_sec") is not None:
+                    dos.append(ff["do_sec"])
+                if ff.get("mdt_sec") is not None:
+                    mdts.append(ff["mdt_sec"])
+            co_sec = sum(cos) / len(cos) if cos else None
+            do_sec = sum(dos) / len(dos) if dos else None
+            mdt_sec = sum(mdts) / len(mdts) if mdts else None
+        component_periods.append({
+            "period": label,
+            "co_minutes": None if co_sec is None else co_sec / 60.0,
+            "do_minutes": None if do_sec is None else do_sec / 60.0,
+            "mdt_minutes": None if mdt_sec is None else mdt_sec / 60.0,
+        })
+
+    scope_rows = rows if not sel_ranges else [r for r in rows if r.get("range") in sel_ranges]
+    if category != "All":
+        scope_rows = [r for r in scope_rows if r.get("category") == category]
+    top_scores = sorted(
+        [r for r in scope_rows if r.get("overall_score") is not None],
+        key=lambda r: -r["overall_score"],
+    )[:5]
+    top_scores = [
+        {"unit": r["unit"], "rank": r.get("rank"), "overall_score": r["overall_score"],
+         "label": f"#{r.get('rank')}  {r['unit']}"}
+        for r in top_scores
+    ]
+
+    dp = policy.get("emergency112") or DEFAULT_POLICY["emergency112"]
+    w = float(dp.get("perf_weight", 0.7))
+    tw = float(dp.get("time_weight", 0.8))
+    pw = float(dp.get("pct_weight", 0.2))
+
+    if single_unit and row:
+        latest_mean = row.get("latest_total_sec")
+        base_mean = row.get("base_total_sec")
+        latest_response_rate = rate(row.get("latest_responded") or 0, row.get("latest_den") or 0)
+        latest_closure = rate(row.get("latest_num") or 0, row.get("latest_den") or 0)
+        latest_closed = row.get("latest_num")
+        latest_responded = row.get("latest_responded")
+        latest_actionable = row.get("latest_den")
+        rank = row.get("rank")
+        unit_category = row.get("category")
+        overall = row.get("overall_score")
+        perf_time = row.get("perf_time_score")
+        perf_pct = row.get("perf_pct_score")
+        time_imp = row.get("time_improvement_score")
+        pct_imp = row.get("pct_improvement_score")
+    else:
+        latest_mean = focus_tot.get("latest_total_sec")
+        base_mean = focus_tot.get("base_total_sec")
+        latest_response_rate = rate(focus_tot.get("latest_responded") or 0, focus_tot.get("latest_den") or 0)
+        latest_closure = rate(focus_tot.get("latest_num") or 0, focus_tot.get("latest_den") or 0)
+        latest_closed = focus_tot.get("latest_num")
+        latest_responded = focus_tot.get("latest_responded")
+        latest_actionable = focus_tot.get("latest_den")
+        rank = unit_category = overall = None
+        perf_time = perf_pct = time_imp = pct_imp = None
+
+    score_points = [
+        {
+            "component": "Response-time performance",
+            "earned": None if perf_time is None else perf_time * w * tw,
+            "remaining": None if perf_time is None else max(0.0, 100.0 * w * tw - perf_time * w * tw),
+            "maximum": 100.0 * w * tw,
+        },
+        {
+            "component": "100m closure performance",
+            "earned": None if perf_pct is None else perf_pct * w * pw,
+            "remaining": None if perf_pct is None else max(0.0, 100.0 * w * pw - perf_pct * w * pw),
+            "maximum": 100.0 * w * pw,
+        },
+        {
+            "component": "Time improvement",
+            "earned": None if time_imp is None else time_imp * (1.0 - w) * tw,
+            "remaining": None if time_imp is None else max(0.0, 100.0 * (1.0 - w) * tw - time_imp * (1.0 - w) * tw),
+            "maximum": 100.0 * (1.0 - w) * tw,
+        },
+        {
+            "component": "100m closure improvement",
+            "earned": None if pct_imp is None else pct_imp * (1.0 - w) * pw,
+            "remaining": None if pct_imp is None else max(0.0, 100.0 * (1.0 - w) * pw - pct_imp * (1.0 - w) * pw),
+            "maximum": 100.0 * (1.0 - w) * pw,
+        },
+    ]
+
+    return {
+        "unit": unit_label if all_units else ",".join(sel_units),
+        "units_selected": sel_units,
+        "selection_mode": "single" if single_unit else ("all" if all_units else "multi"),
+        "range": unit_range,
+        "type": type_,
+        "base": base,
+        "latest": latest,
+        "range_filter": "All" if not sel_ranges else ",".join(sel_ranges),
+        "ranges_selected": sel_ranges,
+        "category": category,
+        "units": unit_names,
+        "ranges": ranges,
+        "unit_ranges": unit_ranges,
+        "kpis": {
+            "latest_mean_sec": latest_mean,
+            "base_mean_sec": base_mean,
+            "latest_response_rate": latest_response_rate,
+            "latest_closure_rate": latest_closure,
+            "latest_closed_100m": latest_closed,
+            "latest_responded": latest_responded,
+            "latest_actionable": latest_actionable,
+            "rank": rank,
+            "category": unit_category,
+            "overall_score": overall,
+            "state_latest_sec": state_latest_sec,
+            "state_base_sec": state_base_sec,
+        },
+        "unit_trend": unit_trend,
+        "component_periods": component_periods,
+        "top_scores": top_scores,
+        "score_points": score_points,
+    }
+
+
+def _hsp_counts(f):
+    if not f:
+        return 0.0, 0.0, 0.0
+    accidents = f.get("accidents") if f.get("accidents") is not None else f.get("den", 0)
+    killed = f.get("killed") if f.get("killed") is not None else f.get("num", 0)
+    injured = f.get("injured") if f.get("injured") is not None else f.get("beyond", 0)
+    return (accidents or 0), (killed or 0), (injured or 0)
+
+
+def _hsp_period_stats(facts, units, period):
+    accidents = killed = injured = 0.0
+    for unit, _rng in units:
+        a, k, i = _hsp_counts(facts.get((unit, period)))
+        accidents += a
+        killed += k
+        injured += i
+    return {
+        "accidents": accidents,
+        "killed": killed,
+        "injured": injured,
+        "fatality_per_100": (100.0 * killed / accidents) if accidents else None,
+    }
+
+
+def _hsp_calendar_key(period):
+    parts = str(period or "").rsplit(" ", 1)
+    if len(parts) == 2 and parts[1].isdigit():
+        return parts[0], int(parts[1])
+    return str(period or ""), None
+
+
+def _pct_change(latest, base):
+    if base in (None, 0) or latest is None:
+        return None
+    return 100.0 * (latest - base) / base
+
+
+def hsp_executive(data, rows, periods, base, latest, type_="All"):
+    """Statewide Executive Dashboard series (HSP_Executive_and_Detailed_Dashboards.xlsm)."""
+    entry = data.get(type_) or data.get("All") or {}
+    facts = entry.get("facts") or {}
+    units = entry.get("units") or []
+
+    period_trend = [{"period": p, **_hsp_period_stats(facts, units, p)} for p in periods]
+
+    fatal_units = sorted(
+        [r for r in rows if (r.get("latest_killed") or 0) > 0],
+        key=lambda r: -(r.get("latest_killed") or 0),
+    )[:5]
+    top_fatalities = [{"unit": r["unit"], "killed": r.get("latest_killed") or 0} for r in fatal_units]
+
+    movers = []
+    for r in rows:
+        if not r.get("eligible"):
+            continue
+        reduced = (r.get("base_killed") or 0) - (r.get("latest_killed") or 0)
+        movers.append({"unit": r["unit"], "fatalities_reduced": reduced})
+    gains = sorted([m for m in movers if m["fatalities_reduced"] > 0], key=lambda m: -m["fatalities_reduced"])[:3]
+    drops = sorted([m for m in movers if m["fatalities_reduced"] < 0], key=lambda m: m["fatalities_reduced"])[:3]
+    fatality_movers = gains + drops
+
+    # Matching calendar quarters across years (e.g. Jul-Sep 2025 vs Jul-Sep 2026)
+    by_cal = {}
+    for p in periods:
+        cal, year = _hsp_calendar_key(p)
+        if year is None:
+            continue
+        stats = _hsp_period_stats(facts, units, p)
+        by_cal.setdefault(cal, {})[year] = stats.get("killed")
+    years = sorted({y for d in by_cal.values() for y in d})
+    yoy_years = years[-2:] if len(years) >= 2 else years
+    calendar_compare = []
+    if len(yoy_years) == 2:
+        y0, y1 = yoy_years
+        for cal in sorted(by_cal.keys(), key=lambda c: next((i for i, p in enumerate(periods) if _hsp_calendar_key(p)[0] == c), 99)):
+            calendar_compare.append({
+                "calendar_quarter": cal,
+                "year_a": y0,
+                "year_b": y1,
+                "killed_a": by_cal[cal].get(y0),
+                "killed_b": by_cal[cal].get(y1),
+            })
+
+    base_stats = _hsp_period_stats(facts, units, base)
+    latest_stats = _hsp_period_stats(facts, units, latest)
+    tot = totals("hsp", rows)
+
+    return {
+        "type": type_,
+        "base": base,
+        "latest": latest,
+        "unit_count": tot["unit_count"],
+        "kpis": {
+            "latest_accidents": latest_stats["accidents"],
+            "base_accidents": base_stats["accidents"],
+            "accidents_pct_change": _pct_change(latest_stats["accidents"], base_stats["accidents"]),
+            "latest_killed": latest_stats["killed"],
+            "base_killed": base_stats["killed"],
+            "killed_pct_change": _pct_change(latest_stats["killed"], base_stats["killed"]),
+            "latest_injured": latest_stats["injured"],
+            "base_injured": base_stats["injured"],
+            "injured_pct_change": _pct_change(latest_stats["injured"], base_stats["injured"]),
+            "latest_fatality_per_100": latest_stats["fatality_per_100"],
+            "base_fatality_per_100": base_stats["fatality_per_100"],
+        },
+        "period_trend": period_trend,
+        "top_fatalities": top_fatalities,
+        "fatality_movers": fatality_movers,
+        "calendar_compare": calendar_compare,
+        "yoy_years": yoy_years,
+    }
+
+
+def hsp_detailed(data, periods, policy, unit, type_, base, latest, range_filter="All", category="All"):
+    """Unit-level Detailed Dashboard series (HSP_Executive_and_Detailed_Dashboards.xlsm)."""
+    type_ = type_ if type_ in data else ("All" if "All" in data else (list(data.keys())[-1] if data else type_))
+    entry = data.get(type_) or {"facts": {}, "units": []}
+    facts = entry.get("facts") or {}
+    units = entry.get("units") or []
+    unit_names = sorted({u for u, _ in units})
+    ranges = sorted({r for _, r in units if r})
+    unit_ranges = {u: r for u, r in units}
+    category = category if category and category != "All" else "All"
+
+    sel_units = _csv_filter(unit, unit_names)
+    sel_ranges = _csv_filter(range_filter, ranges)
+    single_unit = len(sel_units) == 1
+    all_units = not sel_units
+    unit_label = _selection_label(sel_units, "All")
+    focus_pairs = units if all_units else [(u, r) for u, r in units if u in sel_units]
+    unit_range = unit_ranges.get(sel_units[0], "") if single_unit else ""
+
+    rows, _ = score_units("hsp", facts, units, base, latest, policy)
+    row = next((r for r in rows if r["unit"] == sel_units[0]), None) if single_unit else None
+    focus_rows = rows if all_units else [r for r in rows if r["unit"] in sel_units]
+    if all_units and category != "All":
+        focus_rows = [r for r in focus_rows if r.get("category") == category]
+        focus_names = {r["unit"] for r in focus_rows}
+        focus_pairs = [(u, r) for u, r in units if u in focus_names]
+    focus_tot = totals("hsp", focus_rows) if focus_rows else {}
+    state = totals("hsp", rows)
+
+    unit_trend = []
+    for p in periods:
+        state_stats = _hsp_period_stats(facts, units, p)
+        if single_unit:
+            a, k, i = _hsp_counts(facts.get((sel_units[0], p)))
+        else:
+            sel_stats = _hsp_period_stats(facts, focus_pairs, p)
+            a, k, i = sel_stats["accidents"], sel_stats["killed"], sel_stats["injured"]
+        unit_trend.append({
+            "period": p,
+            "accidents": a,
+            "killed": k,
+            "injured": i,
+            "fatality_per_100": (100.0 * k / a) if a else None,
+            "state_accidents": state_stats["accidents"],
+            "state_killed": state_stats["killed"],
+            "state_injured": state_stats["injured"],
+        })
+
+    if single_unit and row:
+        outcomes = [
+            {"outcome": "Accidents", "base": row.get("base_accidents"), "latest": row.get("latest_accidents")},
+            {"outcome": "Fatalities", "base": row.get("base_killed"), "latest": row.get("latest_killed")},
+            {"outcome": "People injured", "base": row.get("base_injured"), "latest": row.get("latest_injured")},
+        ]
+        unit_reductions = {
+            "accidents": row.get("accident_reduction_pct"),
+            "killed": row.get("killed_reduction_pct"),
+            "injured": (
+                None if not row.get("base_injured")
+                else 100.0 * ((row.get("base_injured") or 0) - (row.get("latest_injured") or 0)) / row["base_injured"]
+            ),
+        }
+        latest_accidents = row.get("latest_accidents")
+        latest_killed = row.get("latest_killed")
+        latest_injured = row.get("latest_injured")
+        base_accidents = row.get("base_accidents")
+        base_killed = row.get("base_killed")
+        base_injured = row.get("base_injured")
+        fatality_per_100 = rate(latest_killed or 0, latest_accidents or 0)
+        rank = row.get("rank")
+        unit_category = row.get("category")
+        overall = row.get("overall_score")
+        acc_perf = row.get("accident_perf_score")
+        kill_perf = row.get("killed_perf_score")
+        acc_imp_marks = row.get("accident_improvement_marks")
+        kill_imp_marks = row.get("killed_improvement_marks")
+        accidents_pct_change = _pct_change(latest_accidents, base_accidents)
+        killed_pct_change = _pct_change(latest_killed, base_killed)
+        injured_pct_change = _pct_change(latest_injured, base_injured)
+    else:
+        outcomes = [
+            {"outcome": "Accidents", "base": focus_tot.get("base_accidents") or focus_tot.get("base_den"),
+             "latest": focus_tot.get("total_accidents") or focus_tot.get("latest_den")},
+            {"outcome": "Fatalities", "base": focus_tot.get("base_killed") or focus_tot.get("base_num"),
+             "latest": focus_tot.get("total_killed") or focus_tot.get("latest_num")},
+            {"outcome": "People injured", "base": focus_tot.get("base_injured"),
+             "latest": focus_tot.get("total_injured")},
+        ]
+        ba = outcomes[0]["base"] or 0
+        bk = outcomes[1]["base"] or 0
+        bi = outcomes[2]["base"] or 0
+        la = outcomes[0]["latest"] or 0
+        lk = outcomes[1]["latest"] or 0
+        li = outcomes[2]["latest"] or 0
+        unit_reductions = {
+            "accidents": None if ba == 0 else 100.0 * (ba - la) / ba,
+            "killed": None if bk == 0 else 100.0 * (bk - lk) / bk,
+            "injured": None if bi == 0 else 100.0 * (bi - li) / bi,
+        }
+        latest_accidents, latest_killed, latest_injured = la, lk, li
+        base_accidents, base_killed, base_injured = ba, bk, bi
+        fatality_per_100 = rate(lk, la)
+        rank = unit_category = overall = None
+        acc_perf = kill_perf = acc_imp_marks = kill_imp_marks = None
+        accidents_pct_change = _pct_change(la, ba)
+        killed_pct_change = _pct_change(lk, bk)
+        injured_pct_change = _pct_change(li, bi)
+
+    state_ba = state.get("base_accidents") or state.get("base_den") or 0
+    state_bk = state.get("base_killed") or state.get("base_num") or 0
+    state_bi = state.get("base_injured") or 0
+    state_la = state.get("total_accidents") or state.get("latest_den") or 0
+    state_lk = state.get("total_killed") or state.get("latest_num") or 0
+    state_li = state.get("total_injured") or 0
+    state_reductions = {
+        "accidents": None if state_ba == 0 else 100.0 * (state_ba - state_la) / state_ba,
+        "killed": None if state_bk == 0 else 100.0 * (state_bk - state_lk) / state_bk,
+        "injured": None if state_bi == 0 else 100.0 * (state_bi - state_li) / state_bi,
+    }
+    reductions = [
+        {"outcome": "Accidents", "unit": unit_reductions["accidents"], "statewide": state_reductions["accidents"]},
+        {"outcome": "Fatalities", "unit": unit_reductions["killed"], "statewide": state_reductions["killed"]},
+        {"outcome": "People injured", "unit": unit_reductions["injured"], "statewide": state_reductions["injured"]},
+    ]
+
+    scope_rows = rows if not sel_ranges else [r for r in rows if r.get("range") in sel_ranges]
+    if category != "All":
+        scope_rows = [r for r in scope_rows if r.get("category") == category]
+    top_scores = sorted(
+        [r for r in scope_rows if r.get("overall_score") is not None],
+        key=lambda r: -r["overall_score"],
+    )[:5]
+    top_scores = [
+        {"unit": r["unit"], "rank": r.get("rank"), "overall_score": r["overall_score"],
+         "label": f"#{r.get('rank')}  {r['unit']}"}
+        for r in top_scores
+    ]
+
+    dp = policy.get("hsp") or DEFAULT_POLICY["hsp"]
+    w = float(dp.get("perf_weight", 0.7))
+    aw = float(dp.get("accident_perf_weight", 0.3))
+    kw = float(dp.get("killed_perf_weight", 0.7))
+    aiw = float(dp.get("accident_imp_weight", 0.2))
+    kiw = float(dp.get("killed_imp_weight", 0.7))
+    # improvement marks are already 0–100 style band scores in hsp_reduction_marks
+    score_points = [
+        {
+            "component": "Accident performance",
+            "earned": None if acc_perf is None else acc_perf * w * aw,
+            "remaining": None if acc_perf is None else max(0.0, 100.0 * w * aw - acc_perf * w * aw),
+            "maximum": 100.0 * w * aw,
+        },
+        {
+            "component": "Fatality performance",
+            "earned": None if kill_perf is None else kill_perf * w * kw,
+            "remaining": None if kill_perf is None else max(0.0, 100.0 * w * kw - kill_perf * w * kw),
+            "maximum": 100.0 * w * kw,
+        },
+        {
+            "component": "Accident reduction",
+            "earned": None if acc_imp_marks is None else acc_imp_marks * (1.0 - w) * aiw,
+            "remaining": None if acc_imp_marks is None else max(0.0, 100.0 * (1.0 - w) * aiw - acc_imp_marks * (1.0 - w) * aiw),
+            "maximum": 100.0 * (1.0 - w) * aiw,
+        },
+        {
+            "component": "Fatality reduction",
+            "earned": None if kill_imp_marks is None else kill_imp_marks * (1.0 - w) * kiw,
+            "remaining": None if kill_imp_marks is None else max(0.0, 100.0 * (1.0 - w) * kiw - kill_imp_marks * (1.0 - w) * kiw),
+            "maximum": 100.0 * (1.0 - w) * kiw,
+        },
+    ]
+
+    return {
+        "unit": unit_label if all_units else ",".join(sel_units),
+        "units_selected": sel_units,
+        "selection_mode": "single" if single_unit else ("all" if all_units else "multi"),
+        "range": unit_range,
+        "type": type_,
+        "base": base,
+        "latest": latest,
+        "range_filter": "All" if not sel_ranges else ",".join(sel_ranges),
+        "ranges_selected": sel_ranges,
+        "category": category,
+        "units": unit_names,
+        "ranges": ranges,
+        "unit_ranges": unit_ranges,
+        "kpis": {
+            "latest_accidents": latest_accidents,
+            "base_accidents": base_accidents,
+            "accidents_pct_change": accidents_pct_change,
+            "latest_killed": latest_killed,
+            "base_killed": base_killed,
+            "killed_pct_change": killed_pct_change,
+            "latest_injured": latest_injured,
+            "base_injured": base_injured,
+            "injured_pct_change": injured_pct_change,
+            "fatality_per_100": fatality_per_100,
+            "rank": rank,
+            "category": unit_category,
+            "overall_score": overall,
+        },
+        "unit_trend": unit_trend,
+        "outcomes": outcomes,
+        "reductions": reductions,
+        "top_scores": top_scores,
+        "score_points": score_points,
+    }
 
 
 def explain(domain, row, cohort, policy, type_, base, latest):
