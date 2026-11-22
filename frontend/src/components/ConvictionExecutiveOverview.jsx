@@ -165,7 +165,7 @@ export default function ConvictionExecutiveOverview({ d: initial }) {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 surface-panel rounded-sm p-3" data-testid="ov-conviction-exec-filters">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 surface-panel rounded-sm p-3" data-testid="ov-conviction-exec-filters">
         <FilterField
           label="Case type"
           value={type}
@@ -206,7 +206,7 @@ export default function ConvictionExecutiveOverview({ d: initial }) {
           {courtLabel(ex.type, courtOptions)} · {ex.base} → {ex.latest}
         </p>
 
-        <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <Kpi
             label="Conviction rate"
             value={`${fmt(k.latest_rate)}%`}

@@ -118,15 +118,15 @@ export default function DomainDashboard({ domain }) {
         <div>
           <div className="text-[11px] uppercase tracking-[0.2em] text-teal-700 font-semibold">Domain dashboard</div>
           <div className="h-0.5 w-8 bg-teal-600 mt-2 mb-2 rounded-full" />
-          <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-slate-900" data-testid="dashboard-title">
+          <h1 className="font-display text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-slate-900" data-testid="dashboard-title">
             {`${String(labels.label || "").replace(/\s*Performance\s*$/i, "").trim()} Performance`}
           </h1>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-600 surface-panel px-3 py-2 rounded-sm" data-testid="dataset-status">
-          <span className="inline-flex h-5 w-5 items-center justify-center rounded-sm bg-emerald-50 text-emerald-700">
+        <div className="flex items-start sm:items-center gap-2 text-xs text-slate-600 surface-panel px-3 py-2 rounded-sm max-w-full" data-testid="dataset-status">
+          <span className="inline-flex h-5 w-5 items-center justify-center rounded-sm bg-emerald-50 text-emerald-700 shrink-0">
             <Database className="h-3.5 w-3.5" />
           </span>
-          <span>Source: {meta.dataset.filename} · {meta.dataset.record_count} records · {fmtDate(meta.dataset.uploaded_at)}</span>
+          <span className="min-w-0 break-words">Source: {meta.dataset.filename} · {meta.dataset.record_count} records · {fmtDate(meta.dataset.uploaded_at)}</span>
         </div>
       </div>
       {domain === "conviction" ? (

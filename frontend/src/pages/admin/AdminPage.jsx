@@ -26,8 +26,8 @@ export default function AdminPage() {
         <ProjectDownload />
       </div>
       <Tabs defaultValue="data">
-        <TabsList className="rounded-sm bg-white border h-auto p-1 flex-wrap justify-start">
-          {TABS.map(([v, l]) => <TabsTrigger key={v} value={v} className="rounded-sm data-[state=active]:bg-slate-900 data-[state=active]:text-white" data-testid={`admin-tab-${v}`}>{l}</TabsTrigger>)}
+        <TabsList className="rounded-sm bg-white border h-auto p-1 w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1">
+          {TABS.map(([v, l]) => <TabsTrigger key={v} value={v} className="rounded-sm text-xs sm:text-sm data-[state=active]:bg-slate-900 data-[state=active]:text-white" data-testid={`admin-tab-${v}`}>{l}</TabsTrigger>)}
         </TabsList>
         {TABS.map(([v, , C]) => <TabsContent key={v} value={v} className="mt-5"><C /></TabsContent>)}
       </Tabs>

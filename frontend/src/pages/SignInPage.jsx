@@ -31,7 +31,7 @@ export default function SignInPage() {
   return (
     <form onSubmit={onSubmit} className="w-full max-w-sm space-y-5" data-testid="sign-in-form">
       <div>
-        <h1 className="font-display text-2xl font-semibold text-slate-900">Sign in</h1>
+        <h1 className="font-display text-xl sm:text-2xl font-semibold text-slate-900">Sign in</h1>
         <p className="text-sm text-slate-500 mt-1">Authorised personnel only. New accounts can sign in after admin approval.</p>
       </div>
       {error && (

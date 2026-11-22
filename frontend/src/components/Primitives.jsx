@@ -27,15 +27,15 @@ export const Panel = ({ title, subtitle, right, children, className = "", bodyCl
     )}
   >
     {(title || right) && (
-      <div className="flex items-start justify-between gap-4 px-5 pt-4 pb-3 border-b border-slate-100/90 bg-gradient-to-b from-white to-slate-50/40 shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 px-3 sm:px-5 pt-3 sm:pt-4 pb-3 border-b border-slate-100/90 bg-gradient-to-b from-white to-slate-50/40 shrink-0">
         <div className="min-w-0">
-          <h3 className="font-display text-base font-semibold text-slate-900 tracking-tight">{title}</h3>
+          <h3 className="font-display text-sm sm:text-base font-semibold text-slate-900 tracking-tight">{title}</h3>
           {subtitle && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{subtitle}</p>}
         </div>
-        {right}
+        {right ? <div className="w-full sm:w-auto shrink-0 min-w-0">{right}</div> : null}
       </div>
     )}
-    <div className={cn("p-5 flex-1", bodyClassName)}>{children}</div>
+    <div className={cn("p-3 sm:p-5 flex-1 min-w-0", bodyClassName)}>{children}</div>
   </motion.section>
 );
 
@@ -53,7 +53,7 @@ export const Kpi = ({ label, value, sub, accent, tone, testId, formula }) => {
     viewport={{ once: true, margin: "-20px" }}
     data-testid={testId}
     className={cn(
-      "surface-panel rounded-sm px-4 py-3.5 relative overflow-visible h-full flex flex-col transition-shadow duration-200 hover:shadow-md hover:shadow-slate-900/5",
+      "surface-panel rounded-sm px-3 py-3 sm:px-4 sm:py-3.5 relative overflow-visible h-full flex flex-col transition-shadow duration-200 hover:shadow-md hover:shadow-slate-900/5 min-w-0",
       accent && !isBase && !isLatest && !isChange && "kpi-accent-rail",
       isBase && "kpi-base",
       isLatest && !isBase && "kpi-latest",
@@ -91,9 +91,9 @@ export const Kpi = ({ label, value, sub, accent, tone, testId, formula }) => {
         </PopoverContent>
       </Popover>
     )}
-    <div className="kpi-label text-[10.5px] uppercase tracking-[0.12em] font-semibold text-slate-500 leading-snug h-[2.75rem] overflow-hidden pr-7">{label}</div>
-    <div className="kpi-figure font-num text-2xl font-semibold text-slate-900 mt-2 tracking-tight leading-none h-8 flex items-end">{value}</div>
-    <div className="kpi-sub text-[11px] text-slate-500 mt-1.5 min-h-[2.5rem] leading-snug">{sub || "\u00A0"}</div>
+    <div className="kpi-label text-[10px] sm:text-[10.5px] uppercase tracking-[0.12em] font-semibold text-slate-500 leading-snug min-h-[2rem] sm:h-[2.75rem] overflow-hidden pr-7">{label}</div>
+    <div className="kpi-figure font-num text-xl sm:text-2xl font-semibold text-slate-900 mt-2 tracking-tight leading-none min-h-[1.75rem] sm:h-8 flex items-end">{value}</div>
+    <div className="kpi-sub text-[11px] text-slate-500 mt-1.5 min-h-[1.5rem] sm:min-h-[2.5rem] leading-snug">{sub || "\u00A0"}</div>
   </motion.div>
   );
 };

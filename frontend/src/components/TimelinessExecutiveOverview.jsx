@@ -160,7 +160,7 @@ export default function TimelinessExecutiveOverview({ d: initial }) {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 surface-panel rounded-sm p-3" data-testid="ov-timeliness-exec-filters">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 surface-panel rounded-sm p-3" data-testid="ov-timeliness-exec-filters">
         <FilterField
           label="Case deadline"
           value={type}
@@ -201,7 +201,7 @@ export default function TimelinessExecutiveOverview({ d: initial }) {
           {ex.type} · {ex.base} → {ex.latest}
         </p>
 
-        <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <Kpi
             label="Chargesheeted within time"
             value={`${fmt(k.latest_rate)}%`}

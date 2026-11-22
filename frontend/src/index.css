@@ -4,11 +4,16 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+    overflow-x: hidden;
+}
+
 body {
     margin: 0;
     font-family: 'Source Sans 3', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overflow-x: clip;
 }
 
 .font-display { font-family: 'Sora', sans-serif; }
@@ -189,6 +194,19 @@ body {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
     }
+}
+
+/* Responsive helpers for dense dashboards */
+@media (max-width: 639px) {
+    .kpi-figure {
+        font-size: 1.25rem !important;
+        line-height: 1.2 !important;
+    }
+}
+
+.table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 @layer base {

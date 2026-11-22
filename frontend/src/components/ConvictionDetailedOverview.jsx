@@ -162,7 +162,7 @@ export default function ConvictionDetailedOverview() {
               {unitSummary} · {rangeSummary} · {categorySummary} · {d.type} · {d.base} → {d.latest}
             </p>
 
-            <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+            <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
               <Kpi
                 label="Trial cases"
                 value={fmtInt(k.latest_trials)}

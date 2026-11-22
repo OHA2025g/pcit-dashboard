@@ -390,7 +390,7 @@ function PillSwitch({ value, onChange, options, testId, ariaLabel, cols }) {
       role="group"
       aria-label={ariaLabel}
       data-testid={testId}
-      className="relative inline-grid items-center rounded-full p-1"
+      className="relative inline-grid w-full sm:w-auto items-center rounded-full p-1 max-w-full"
       style={{
         gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))`,
         background: "#E8ECF1",
@@ -941,7 +941,7 @@ function ChartCard({ chartDef, rows, groupBy, hasRanges, geometry, byRange, onSe
 
 function renderChartGrid(chartDefs, props) {
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {chartDefs.map((chartDef) => (
         <div key={chartDef.id} className={chartDef.tabs ? "xl:col-span-2" : undefined}>
           <ChartCard chartDef={chartDef} {...props} />

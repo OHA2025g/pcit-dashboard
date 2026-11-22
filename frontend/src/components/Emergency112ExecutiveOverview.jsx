@@ -141,7 +141,7 @@ export default function Emergency112ExecutiveOverview({ d: initial }) {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 surface-panel rounded-sm p-3" data-testid="ov-112-exec-filters">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 surface-panel rounded-sm p-3" data-testid="ov-112-exec-filters">
         <FilterField
           label="Base month"
           value={base}
@@ -181,7 +181,7 @@ export default function Emergency112ExecutiveOverview({ d: initial }) {
           {ex.base} → {ex.latest}
         </p>
 
-        <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <Kpi
             label="Actionable calls"
             value={fmtInt(k.latest_actionable)}

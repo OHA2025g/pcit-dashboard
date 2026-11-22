@@ -54,7 +54,7 @@ export default function ConvictionDashboardPanels({ rows }) {
   const pieData = Object.entries(dist).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" data-testid="conviction-dashboard-panels">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="conviction-dashboard-panels">
       <Panel title="Top & bottom units" subtitle="By overall score (current filters)">
         <div className="space-y-5">
           <UnitList title="Top 5" icon={TrendingUp} rows={top} tone="text-emerald-700" testId="conviction-dash-top" />

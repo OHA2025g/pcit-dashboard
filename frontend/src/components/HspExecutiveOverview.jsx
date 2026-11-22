@@ -152,7 +152,7 @@ export default function HspExecutiveOverview({ d: initial }) {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 surface-panel rounded-sm p-3" data-testid="ov-hsp-exec-filters">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 surface-panel rounded-sm p-3" data-testid="ov-hsp-exec-filters">
         <FilterField label="Base quarter" value={base} onChange={setBase} options={periodOptions} testId="ov-hsp-filter-base" />
         <FilterField label="Latest quarter" value={latest} onChange={setLatest} options={periodOptions} testId="ov-hsp-filter-latest" />
         <div className="min-w-0">
@@ -178,7 +178,7 @@ export default function HspExecutiveOverview({ d: initial }) {
 
         <p className="text-xs text-slate-500 mb-3">{ex.base} → {ex.latest}</p>
 
-        <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <Kpi
             label="Total accidents"
             value={fmtInt(k.latest_accidents)}

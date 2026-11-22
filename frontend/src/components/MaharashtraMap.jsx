@@ -414,8 +414,10 @@ export default function MaharashtraMap({ overview }) {
 
   useEffect(() => {
     const onResize = () => {
-      const w = Math.round(Math.min(920, Math.max(320, window.innerWidth - 120)) * 0.8);
-      setSize({ w, h: Math.round(w * 0.72) });
+      const gutter = window.innerWidth < 640 ? 32 : window.innerWidth < 1024 ? 64 : 160;
+      const avail = Math.max(280, window.innerWidth - gutter);
+      const w = Math.round(Math.min(920, avail));
+      setSize({ w, h: Math.round(w * (window.innerWidth < 640 ? 0.85 : 0.72)) });
     };
     onResize();
     window.addEventListener("resize", onResize);
@@ -584,9 +586,9 @@ export default function MaharashtraMap({ overview }) {
 
   return (
     <div className="space-y-4" data-testid="overview-map">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="font-display text-xl font-semibold text-slate-900 tracking-tight">Maharashtra map</h2>
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="font-display text-lg sm:text-xl font-semibold text-slate-900 tracking-tight">Maharashtra map</h2>
           <p className="text-xs text-slate-500 mt-0.5 max-w-2xl">
             All units plotted on district boundaries · tahasils from{" "}
             <a
@@ -600,12 +602,12 @@ export default function MaharashtraMap({ overview }) {
             {snap ? ` · ${snap.base} → ${snap.latest}` : ""}.
           </p>
         </div>
-        <label className="text-xs text-slate-600">
+        <label className="text-xs text-slate-600 w-full sm:w-auto">
           <span className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1">Score domain</span>
           <select
             value={domain}
             onChange={(e) => setDomain(e.target.value)}
-            className="h-9 rounded-sm border border-slate-200 bg-white px-2 text-sm"
+            className="h-9 w-full sm:w-auto min-w-[11rem] rounded-sm border border-slate-200 bg-white px-2 text-sm"
             data-testid="map-domain-select"
           >
             {DOMAIN_OPTIONS.filter((o) => overview?.[o.key]).map((o) => (
@@ -617,7 +619,7 @@ export default function MaharashtraMap({ overview }) {
 
       {error && <div className="text-sm text-rose-700" data-testid="map-error">{error}</div>}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(260px,340px)] gap-4">
         <Panel
           title="District choropleth"
           subtitle={`${markers.covered} districts coloured · ${markers.placed} unit labels${unplaced ? ` · ${unplaced} unmatched` : ""}`}
@@ -679,35 +681,39 @@ export default function MaharashtraMap({ overview }) {
                       onMouseEnter={() => setHover(m)}
                       data-testid={`map-unit-${slug(m.unit)}`}
                     >
-                      <line
-                        x1={m.x}
-                        y1={m.y}
-                        x2={m.lx - 2}
-                        y2={m.ly - 2}
-                        stroke={active ? "#0F3D5E" : "rgba(15,23,42,0.35)"}
-                        strokeWidth={active ? 1.2 : 0.6}
-                      />
+                      {size.w >= 520 && (
+                        <line
+                          x1={m.x}
+                          y1={m.y}
+                          x2={m.lx - 2}
+                          y2={m.ly - 2}
+                          stroke={active ? "#0F3D5E" : "rgba(15,23,42,0.35)"}
+                          strokeWidth={active ? 1.2 : 0.6}
+                        />
+                      )}
                       <circle
                         cx={m.x}
                         cy={m.y}
-                        r={active ? 3.2 : 2.2}
+                        r={active ? 3.2 : (size.w < 520 ? 2.8 : 2.2)}
                         fill="#FFFFFF"
                         stroke={active ? "#0F3D5E" : "#334155"}
                         strokeWidth={1.2}
                       />
-                      <text
-                        x={m.lx}
-                        y={m.ly}
-                        fontSize={active ? 10 : 8.5}
-                        fontWeight={active ? 700 : 600}
-                        fill={active ? "#0F3D5E" : "#0F172A"}
-                        stroke="#FFFFFF"
-                        strokeWidth={3}
-                        paintOrder="stroke"
-                        style={{ fontFamily: "Source Sans 3, sans-serif", pointerEvents: "none" }}
-                      >
-                        {m.unit}
-                      </text>
+                      {size.w >= 520 && (
+                        <text
+                          x={m.lx}
+                          y={m.ly}
+                          fontSize={active ? 10 : 8.5}
+                          fontWeight={active ? 700 : 600}
+                          fill={active ? "#0F3D5E" : "#0F172A"}
+                          stroke="#FFFFFF"
+                          strokeWidth={3}
+                          paintOrder="stroke"
+                          style={{ fontFamily: "Source Sans 3, sans-serif", pointerEvents: "none" }}
+                        >
+                          {m.unit}
+                        </text>
+                      )}
                       <title>{`${m.unit}${m.overall_score != null ? ` · ${fmt(m.overall_score)}` : ""}${m.rank ? ` · #${m.rank}` : ""}`}</title>
                     </g>
                   );

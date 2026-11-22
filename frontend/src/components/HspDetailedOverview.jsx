@@ -159,7 +159,7 @@ export default function HspDetailedOverview() {
               {unitSummary} · {rangeSummary} · {categorySummary} · {d.base} → {d.latest}
             </p>
 
-            <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               <Kpi
                 label="Total accidents"
                 value={fmtInt(k.latest_accidents)}

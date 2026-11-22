@@ -154,7 +154,7 @@ export default function Emergency112DetailedOverview() {
               {unitSummary} · {rangeSummary} · {categorySummary} · {d.base} → {d.latest}
             </p>
 
-            <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <Kpi
                 label="Average response time"
                 value={fmtDuration(k.latest_mean_sec)}

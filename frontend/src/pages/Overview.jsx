@@ -77,7 +77,7 @@ const DomainBlock = ({ domain, d }) => (
         <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
       </Link>
     </div>
-    <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       {domain === "antf" ? (
         <>
           <Kpi label="Total meetings from Jan 2026" value={fmtInt(d.totals.total_meetings)} sub={d.latest} accent testId={`ov-${domain}-meetings`} />
@@ -197,12 +197,12 @@ export default function Overview() {
 
         {tabs.length > 0 && (
           <Tabs value={activeTab} onValueChange={setTab} data-testid="overview-domain-tabs">
-            <TabsList className="rounded-none rounded-b-sm bg-white border border-t-0 border-slate-200 h-auto p-1 grid gap-1 w-full" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+            <TabsList className="rounded-none rounded-b-sm bg-white border border-t-0 border-slate-200 h-auto p-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1 w-full">
               {tabs.map((k) => (
                 <TabsTrigger
                   key={k}
                   value={k}
-                  className="rounded-sm px-3 py-2 text-sm w-full justify-center data-[state=active]:bg-brand-chrome data-[state=active]:text-white data-[state=active]:shadow-none"
+                  className="rounded-sm px-2 sm:px-3 py-2 text-[11px] sm:text-sm w-full justify-center whitespace-normal text-center leading-snug data-[state=active]:bg-brand-chrome data-[state=active]:text-white data-[state=active]:shadow-none"
                   data-testid={`overview-tab-${k}`}
                 >
                   {TAB_LABELS[k] || TITLES[k]}

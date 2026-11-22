@@ -84,14 +84,14 @@ export default function TrendsPage() {
             {!data.matched.hsp && <div className="mb-3 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="trend-no-hsp"><Info className="h-4 w-4" />This unit has no matching record in the HSP data.</div>}
             {!data.matched.training && <div className="mb-3 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="trend-no-training"><Info className="h-4 w-4" />This unit has no matching record in the training data.</div>}
             {!data.matched.antf && <div className="mb-3 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="trend-no-antf"><Info className="h-4 w-4" />This unit has no matching record in the ANTF meetings data.</div>}
-            <div style={{ height: 380 }}>
+            <div className="h-[260px] sm:h-[320px] md:h-[380px]">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data.points} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                <LineChart data={data.points} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="2 4" stroke={CHART.grid} />
-                  <XAxis dataKey="period" tick={{ fontSize: 11, fill: CHART.tick }} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: CHART.tick }} unit="%" />
+                  <XAxis dataKey="period" tick={{ fontSize: 10, fill: CHART.tick }} interval="preserveStartEnd" />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: CHART.tick }} unit="%" width={36} />
                   <Tooltip content={<Tip />} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
                   <Line type="linear" dataKey="conviction" name="Conviction rate" stroke={CHART.navy} strokeWidth={2.5} dot={{ r: 4 }} connectNulls isAnimationActive animationDuration={CHART.animationDuration} />
                   <Line type="linear" dataKey="conviction_benchmark" name={`Conviction · ${bench}`} stroke={CHART.navy} strokeDasharray="5 5" strokeWidth={1.5} dot={false} connectNulls isAnimationActive animationDuration={CHART.animationDuration} />
                   <Line type="linear" dataKey="timeliness" name="Within-time rate" stroke={CHART.amber} strokeWidth={2.5} dot={{ r: 4 }} connectNulls isAnimationActive animationDuration={CHART.animationDuration} />
@@ -107,10 +107,10 @@ export default function TrendsPage() {
                 </LineChart>
               </ResponsiveContainer>
             </div>
-            <div className="overflow-x-auto mt-4 -mx-5 -mb-5 border-t border-slate-100">
-              <table className="w-full text-sm" data-testid="trend-table">
-                <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500"><tr>{cols.map((c) => <th key={c.key} className="text-left px-4 py-2">{c.label}</th>)}</tr></thead>
-                <tbody>{data.points.map((p) => <tr key={p.period} className="border-t border-slate-100">{cols.map((c) => <td key={c.key} className="px-4 py-2 font-num text-xs">{c.key === "period" ? p.period : fmt(p[c.key])}</td>)}</tr>)}</tbody>
+            <div className="overflow-x-auto mt-4 -mx-3 sm:-mx-5 -mb-3 sm:-mb-5 border-t border-slate-100">
+              <table className="w-full min-w-[960px] text-sm" data-testid="trend-table">
+                <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500"><tr>{cols.map((c) => <th key={c.key} className="text-left px-3 sm:px-4 py-2 whitespace-nowrap">{c.label}</th>)}</tr></thead>
+                <tbody>{data.points.map((p) => <tr key={p.period} className="border-t border-slate-100">{cols.map((c) => <td key={c.key} className="px-3 sm:px-4 py-2 font-num text-xs whitespace-nowrap">{c.key === "period" ? p.period : fmt(p[c.key])}</td>)}</tr>)}</tbody>
               </table>
             </div>
           </>

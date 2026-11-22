@@ -132,16 +132,16 @@ export default function RankingTable({ domain, labels, rows, onExplain, exportCo
   return (
     <Panel testId={`ranking-table-${domain}`} title="Unit-wise ranking and score calculation" subtitle={`${view.length} of ${rows.length} units · Rank 1 = highest overall score · click a column to sort`}
       right={
-        <div className="flex items-center gap-2">
-          <div className="relative">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+          <div className="relative w-full sm:w-52">
             <Search className="h-4 w-4 absolute left-2.5 top-2.5 text-slate-400" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search unit or range" className="h-9 pl-8 w-52 rounded-sm" data-testid="ranking-search-input" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search unit or range" className="h-9 pl-8 w-full rounded-sm" data-testid="ranking-search-input" />
           </div>
           <ExportMenu title={`${labels.label} Rankings`} view={`${domain}-rankings`} columns={cols} rows={view.filter((r) => r.included)} context={exportContext} notes={exportNotes} testId="ranking-export" />
         </div>
       }>
-      <div className="overflow-auto max-h-[640px] -mx-5 -mb-5 border-t border-slate-100">
-        <table className="w-full text-[12.5px]" data-testid="ranking-table">
+      <div className="overflow-x-auto overflow-y-auto max-h-[min(70vh,640px)] -mx-3 sm:-mx-5 -mb-3 sm:-mb-5 border-t border-slate-100">
+        <table className="w-full min-w-[720px] text-[12.5px]" data-testid="ranking-table">
           <thead className="sticky top-0 bg-slate-50/95 backdrop-blur-sm z-10 shadow-[0_1px_0_0_rgb(241,245,249)]">
             <tr>
               {cols.map((c) => (

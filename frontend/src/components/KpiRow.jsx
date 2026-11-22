@@ -45,7 +45,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
       <div className="space-y-5">
         <div>
           <RowLabel>Statewide</RowLabel>
-          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3" data-testid="kpi-row">
+          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3" data-testid="kpi-row">
             <Kpi testId="kpi-total-meetings" label="Total meetings from Jan 2026" value={fmtInt(s.total_meetings)} sub={scope} accent />
             <Kpi testId="kpi-mom-uploaded" label="MoM uploaded (NCORD)" value={fmtInt(s.total_mom_uploaded)} sub="Months with minutes uploaded" />
             <Kpi testId="kpi-total-marks" label="Total marks scored" value={fmtInt(s.total_marks)} sub="Meetings×3 + MoM×2" accent />
@@ -55,7 +55,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
         </div>
         <div>
           <RowLabel>Selection</RowLabel>
-          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3" data-testid="kpi-unit-row">
+          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3" data-testid="kpi-unit-row">
             <Kpi testId="kpi-sel-units" label="Units" value={fmtInt(sel.unit_count)} sub={selName} />
             <Kpi testId="kpi-sel-meetings" label="Meetings" value={fmtInt(sel.total_meetings)} sub="From Jan 2026" />
             <Kpi testId="kpi-sel-mom" label="MoM uploaded" value={fmtInt(sel.total_mom_uploaded)} sub="NCORD portal" />
@@ -72,7 +72,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
       <div className="space-y-5">
         <div>
           <RowLabel>Statewide</RowLabel>
-          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3" data-testid="kpi-row">
+          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3" data-testid="kpi-row">
             <Kpi testId="kpi-base-accidents" label={`${scope} base accidents`} value={fmtInt(s.base_accidents ?? s.base_den)} sub={f.base} />
             <Kpi testId="kpi-base-killed" label={`${scope} base killed`} value={fmtInt(s.base_killed ?? s.base_num)} sub={f.base} />
             <Kpi testId="kpi-latest-accidents" label={`${scope} latest accidents`} value={fmtInt(s.total_accidents ?? s.latest_den)} sub={f.latest} accent />
@@ -83,7 +83,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
         </div>
         <div>
           <RowLabel>Selection</RowLabel>
-          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3" data-testid="kpi-unit-row">
+          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3" data-testid="kpi-unit-row">
             <Kpi testId="kpi-sel-units" label="Units" value={fmtInt(sel.unit_count)} sub={selName} />
             <Kpi testId="kpi-sel-accidents" label="Latest accidents" value={fmtInt(sel.total_accidents ?? sel.latest_den)} sub={f.latest} />
             <Kpi testId="kpi-sel-killed" label="Latest killed" value={fmtInt(sel.total_killed ?? sel.latest_num)} sub={f.latest} />
@@ -101,7 +101,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
       <div className="space-y-5">
         <div>
           <RowLabel>Statewide</RowLabel>
-          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3" data-testid="kpi-row">
+          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3" data-testid="kpi-row">
             <Kpi testId="kpi-base-den" label={`${scope} base headcount`} value={fmtInt(s.base_den)} sub={f.base} />
             <Kpi testId="kpi-base-num" label={`${scope} base people trained`} value={fmtInt(s.base_num)} sub={f.base} />
             <Kpi testId="kpi-base-rate" label="Base % people trained" value={`${fmt(s.base_rate)}%`} sub={f.base} />
@@ -113,7 +113,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
         </div>
         <div>
           <RowLabel>Selection</RowLabel>
-          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3" data-testid="kpi-unit-row">
+          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3" data-testid="kpi-unit-row">
             <Kpi testId="kpi-unit-count" label="Units" value={fmtInt(sel.unit_count)} sub={selName} />
             <Kpi testId="kpi-unit-base-rate" label="Base % trained" value={`${fmt(sel.base_rate)}%`} sub={f.base} />
             <Kpi testId="kpi-unit-latest-rate" label="Latest % trained" value={`${fmt(sel.latest_rate)}%`} sub={f.latest} accent />
@@ -137,7 +137,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
           <AnimatePresence initial={false}>
             {showSignals && (
               <motion.div key="signals-row" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
-                <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-4 gap-3" data-testid="kpi-extra-row">
+                <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3" data-testid="kpi-extra-row">
                   <Kpi testId="kpi-rank-movement" label="Rank movement" value={<span><span className="text-emerald-700">▲ {s.moved_up}</span> <span className="text-rose-700 ml-2">▼ {s.moved_down}</span></span>}
                     sub={data.prev_window ? `vs ${data.prev_window[0]} → ${data.prev_window[1]}` : "No earlier window"} />
                   <Kpi testId="kpi-most-consistent" label="Most consistent unit" value={<span className="text-lg">{mc ? mc.unit : "—"}</span>} sub={mc ? `±${fmt(mc.volatility)} pp` : ""} />
@@ -155,7 +155,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
       <div className="space-y-5">
         <div>
           <RowLabel>Statewide</RowLabel>
-          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3" data-testid="kpi-row">
+          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3" data-testid="kpi-row">
             <Kpi testId="kpi-base-den" label={`${scope} base actionable calls`} value={fmtInt(s.base_den)} sub={f.base} />
             <Kpi testId="kpi-base-time" label="Base avg response time" value={fmtDuration(s.base_total_sec)} sub={f.base} />
             <Kpi testId="kpi-base-rate" label="Base % ≤100m" value={`${fmt(s.base_rate)}%`} sub={f.base} />
@@ -167,7 +167,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
         </div>
         <div>
           <RowLabel>Selection</RowLabel>
-          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3" data-testid="kpi-unit-row">
+          <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3" data-testid="kpi-unit-row">
             <Kpi testId="kpi-unit-count" label="Districts" value={fmtInt(sel.unit_count)} sub={selName} />
             <Kpi testId="kpi-unit-base-time" label="Base response time" value={fmtDuration(sel.base_total_sec)} sub={f.base} />
             <Kpi testId="kpi-unit-base-rate" label="Base % ≤100m" value={`${fmt(sel.base_rate)}%`} sub={f.base} />
@@ -191,7 +191,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
           <AnimatePresence initial={false}>
             {showSignals && (
               <motion.div key="signals-row" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
-                <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-4 gap-3" data-testid="kpi-extra-row">
+                <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3" data-testid="kpi-extra-row">
                   <Kpi testId="kpi-closed" label="Events closed ≤100m (latest)" value={fmtInt(s.latest_num)} sub={`of ${fmtInt(s.latest_responded || s.latest_den)} responded`} />
                   <Kpi testId="kpi-pct-imp" label="% ≤100m improvement" value={<Delta value={s.improvement} />} sub="statewide pp" />
                   <Kpi testId="kpi-rank-movement" label="Rank movement" value={<span><span className="text-emerald-700">▲ {s.moved_up}</span> <span className="text-rose-700 ml-2">▼ {s.moved_down}</span></span>}
@@ -210,7 +210,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
     <div className="space-y-5">
       <div>
         <RowLabel>Statewide</RowLabel>
-        <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3" data-testid="kpi-row">
+        <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3" data-testid="kpi-row">
           <Kpi testId="kpi-base-den" label={`${scope} base ${labels.den.toLowerCase()}`} value={fmtInt(s.base_den)} sub={f.base}
             formula={{ description: `Total ${labels.den.toLowerCase()} statewide for the base period.`, expression: `Σ ${labels.den} (base period)`, example: `${f.base}: ${fmtInt(s.base_den)}` }} />
           <Kpi testId="kpi-base-num" label={`${scope} base ${labels.num.toLowerCase()}`} value={fmtInt(s.base_num)} sub={domain === "timeliness" ? `Beyond time: ${fmtInt(s.base_beyond)}` : f.base}
@@ -230,7 +230,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
 
       <div>
         <RowLabel>Selection</RowLabel>
-        <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-9 gap-3" data-testid="kpi-unit-row">
+        <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-9 gap-3" data-testid="kpi-unit-row">
           <Kpi testId="kpi-unit-count" label="Units" value={fmtInt(sel.unit_count)} sub={selName}
             formula={{ description: "Number of units included by the current Unit / Range / Rank category filters.", expression: "COUNT of units where Include = 1", example: `${fmtInt(sel.unit_count)} unit${sel.unit_count === 1 ? "" : "s"} · ${selName}` }} />
           <Kpi testId="kpi-unit-base-den" label={`Base ${labels.den.toLowerCase()}`} value={fmtInt(sel.base_den)} sub={f.base}
@@ -277,7 +277,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
               transition={{ duration: 0.2 }}
               className="overflow-hidden"
             >
-              <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-4 gap-3" data-testid="kpi-extra-row">
+              <motion.div variants={staggerFast} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3" data-testid="kpi-extra-row">
                 {domain === "conviction" ? (
                   <>
                     <Kpi testId="kpi-acquittal-rate" label={`${scope} acquittal rate`} value={`${fmt(s.latest_acquittal_rate)}%`} sub={`Base ${fmt(s.base_acquittal_rate)}% · lower is better`}

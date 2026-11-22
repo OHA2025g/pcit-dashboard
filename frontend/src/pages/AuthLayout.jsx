@@ -45,7 +45,16 @@ export default function AuthLayout({ children }) {
           </div>
         </div>
       </aside>
-      <main className="flex-1 flex items-center justify-center p-6" data-testid="auth-form-area">{children}</main>
+      <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 min-w-0" data-testid="auth-form-area">
+        <div className="lg:hidden flex items-center gap-2.5 mb-6 w-full max-w-sm" data-testid="auth-mobile-brand">
+          <img src="/maharashtra-police-logo.png" alt="Maharashtra Police" className="h-9 w-9 rounded-full object-cover shrink-0" />
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-teal-700 font-semibold">Performance Directorate</div>
+            <div className="font-display text-sm font-semibold text-slate-900 leading-tight">Police Unit Performance Dashboard</div>
+          </div>
+        </div>
+        {children}
+      </main>
     </div>
   );
 }
