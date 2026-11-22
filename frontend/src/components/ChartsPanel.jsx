@@ -173,7 +173,7 @@ const CHARTS = {
         {
           id: "closed_100m",
           label: "≤100m calls",
-          title: "Calls closed within 100 minutes",
+          title: "Calls closed within 100 meters",
           unit: "events",
           keys: [
             ["base_num", "Base ≤100m"],
