@@ -345,7 +345,7 @@ export default function ConvictionDetailedOverview() {
               <Panel
                 title={
                   <OverviewChartTitle
-                    title={isAll ? "Statewide conviction rates by court" : "Conviction rates by court"}
+                    title={isAll ? "Statewide conviction rates by Type" : "Conviction rates by Type"}
                     explainId="courts"
                     testId="ov-det-chart-courts-info"
                   />

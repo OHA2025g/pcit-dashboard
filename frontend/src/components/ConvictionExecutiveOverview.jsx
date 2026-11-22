@@ -296,7 +296,7 @@ export default function ConvictionExecutiveOverview({ d: initial }) {
             </div>
           </Panel>
 
-          <Panel title="Conviction rates by reporting group" subtitle="Ordered by latest-period rate" testId="ov-conv-chart-ranges">
+          <Panel title="Conviction rates by Range" subtitle="Ordered by latest-period rate" testId="ov-conv-chart-ranges">
             <div className="h-72">
               <ResponsiveContainer>
                 <BarChart data={rangeRates} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
@@ -313,7 +313,7 @@ export default function ConvictionExecutiveOverview({ d: initial }) {
             <p className="text-[11px] text-slate-500 mt-2">Reporting groups are ordered by their latest-period rate.</p>
           </Panel>
 
-          <Panel title="Largest unit gains and declines" subtitle="Up to three gains and three declines (pp)" testId="ov-conv-chart-movers">
+          <Panel title="Maximum Improvements and Declines" subtitle="Up to three gains and three declines (pp)" testId="ov-conv-chart-movers">
             <div className="h-72">
               <ResponsiveContainer>
                 <BarChart data={movers} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>

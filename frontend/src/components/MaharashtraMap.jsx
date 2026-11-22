@@ -621,7 +621,7 @@ export default function MaharashtraMap({ overview }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(260px,340px)] gap-4">
         <Panel
-          title="District choropleth"
+          title="District Wise Details"
           subtitle={`${markers.covered} districts coloured · ${markers.placed} unit labels${unplaced ? ` · ${unplaced} unmatched` : ""}`}
           testId="map-panel"
         >
