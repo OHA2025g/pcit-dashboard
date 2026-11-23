@@ -409,7 +409,7 @@ export default function MaharashtraMap({ overview }) {
   const [domainRows, setDomainRows] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [hover, setHover] = useState(null);
+  const [selected, setSelected] = useState(null);
   const [size, setSize] = useState({ w: 720, h: 520 });
 
   useEffect(() => {
@@ -550,12 +550,12 @@ export default function MaharashtraMap({ overview }) {
     };
   }, [rows, centroids, districtNames, project, size.w, size.h]);
 
-  const hoverInfo = hover
+  const selectedInfo = selected
     ? {
-        ...hover,
+        ...selected,
         tahasil:
-          tahasilByDistrict[districtKey(hover.district)]
-          || tahasilByDistrict[districtKey(hover.district === "Mumbai" ? "Mumbai Suburban" : hover.district)]
+          tahasilByDistrict[districtKey(selected.district)]
+          || tahasilByDistrict[districtKey(selected.district === "Mumbai" ? "Mumbai Suburban" : selected.district)]
           || [],
       }
     : null;
@@ -569,14 +569,14 @@ export default function MaharashtraMap({ overview }) {
   );
 
   const domainSnapshots = useMemo(() => {
-    if (!hoverInfo?.unit) return stateSnapshots;
+    if (!selectedInfo?.unit) return stateSnapshots;
     return DOMAIN_OPTIONS.map((o) => ({
       key: o.key,
-      row: findUnitRow(domainRows[o.key], hoverInfo.unit),
+      row: findUnitRow(domainRows[o.key], selectedInfo.unit),
     }));
-  }, [domainRows, hoverInfo?.unit, stateSnapshots]);
+  }, [domainRows, selectedInfo?.unit, stateSnapshots]);
 
-  const detailMode = hoverInfo ? "unit" : "state";
+  const detailMode = selectedInfo ? "unit" : "state";
   const stateUnitCount = stateSnapshots.find((d) => d.row?.unit_count)?.row?.unit_count
     || stateSnapshots.find((d) => d.row?.scored_count)?.row?.scored_count
     || null;
@@ -640,7 +640,7 @@ export default function MaharashtraMap({ overview }) {
               >
                 {(geo.features || []).map((f) => {
                   const name = f.properties.district;
-                  const active = hover?.district === name;
+                  const active = selected?.district === name;
                   const fill = markers.districtColors[name] || "#E2E8F0";
                   const distScore = markers.districtScores[name];
                   const distCat = markers.districtCats[name];
@@ -653,9 +653,9 @@ export default function MaharashtraMap({ overview }) {
                       strokeWidth={active ? 1.8 : 0.8}
                       className="cursor-pointer"
                       opacity={active ? 1 : 0.92}
-                      onMouseEnter={() => {
+                      onClick={() => {
                         const units = markers.points.filter((p) => p.district === name);
-                        setHover(units[0] || {
+                        const next = units[0] || {
                           unit: name,
                           district: name,
                           overall_score: distScore,
@@ -664,7 +664,8 @@ export default function MaharashtraMap({ overview }) {
                           rank: null,
                           category: distCat,
                           range: "",
-                        });
+                        };
+                        setSelected((prev) => (prev?.unit === next.unit && prev?.district === next.district ? null : next));
                       }}
                       data-testid={`map-district-${slug(name)}`}
                     >
@@ -673,12 +674,12 @@ export default function MaharashtraMap({ overview }) {
                   );
                 })}
                 {markers.points.map((m) => {
-                  const active = hover?.unit === m.unit;
+                  const active = selected?.unit === m.unit;
                   return (
                     <g
                       key={m.unit}
                       className="cursor-pointer"
-                      onMouseEnter={() => setHover(m)}
+                      onClick={() => setSelected((prev) => (prev?.unit === m.unit ? null : m))}
                       data-testid={`map-unit-${slug(m.unit)}`}
                     >
                       {size.w >= 520 && (
@@ -733,12 +734,12 @@ export default function MaharashtraMap({ overview }) {
 
         <Panel
           title={detailMode === "unit" ? "Unit detail" : "State detail"}
-          subtitle={detailMode === "unit" ? hoverInfo.unit : "Maharashtra · statewide averages"}
+          subtitle={detailMode === "unit" ? selectedInfo.unit : "Maharashtra · statewide averages"}
           testId="map-detail"
           right={detailMode === "unit" ? (
             <button
               type="button"
-              onClick={() => setHover(null)}
+              onClick={() => setSelected(null)}
               className="text-xs text-brand-navy hover:text-teal-700 font-medium shrink-0"
               data-testid="map-show-state"
             >
@@ -753,12 +754,12 @@ export default function MaharashtraMap({ overview }) {
               </div>
               {detailMode === "unit" ? (
                 <>
-                  <div className="font-semibold text-slate-900 mt-0.5">{hoverInfo.unit}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">{hoverInfo.district} · {hoverInfo.range || "—"}</div>
-                  {hoverInfo.districtScore != null && (
+                  <div className="font-semibold text-slate-900 mt-0.5">{selectedInfo.unit}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">{selectedInfo.district} · {selectedInfo.range || "—"}</div>
+                  {selectedInfo.districtScore != null && (
                     <div className="text-[10px] text-slate-500 mt-0.5">
-                      District avg {fmt(hoverInfo.districtScore)}
-                      {hoverInfo.districtCategory ? ` · ${hoverInfo.districtCategory}` : ""}
+                      District avg {fmt(selectedInfo.districtScore)}
+                      {selectedInfo.districtCategory ? ` · ${selectedInfo.districtCategory}` : ""}
                     </div>
                   )}
                 </>
@@ -770,7 +771,7 @@ export default function MaharashtraMap({ overview }) {
                   </div>
                   <div className="text-xs text-slate-500 mt-0.5">
                     {stateUnitCount != null ? `${stateUnitCount} police units · ` : ""}
-                    hover a unit marker for unit-level detail
+                    click a unit marker for unit-level detail
                   </div>
                 </>
               )}
@@ -795,13 +796,13 @@ export default function MaharashtraMap({ overview }) {
             {detailMode === "unit" && (
               <div>
                 <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1.5">
-                  District tahasils ({hoverInfo.tahasil.length})
+                  District tahasils ({selectedInfo.tahasil.length})
                 </div>
                 <div className="max-h-[140px] overflow-auto space-y-1 pr-1">
-                  {hoverInfo.tahasil.length === 0 ? (
+                  {selectedInfo.tahasil.length === 0 ? (
                     <div className="text-xs text-slate-500">No tahasil list for this district in the gist.</div>
                   ) : (
-                    hoverInfo.tahasil.map((t) => (
+                    selectedInfo.tahasil.map((t) => (
                       <div key={t} className="text-xs text-slate-700 border-b border-slate-100 py-1">{t}</div>
                     ))
                   )}
