@@ -146,6 +146,7 @@ export default function ConvictionDetailedOverview() {
         set={setF}
         onReset={() => setF(initialFilters(meta))}
         embedded
+        singleSelectUnitRange
         testId="conviction-detailed-filters"
       />
 

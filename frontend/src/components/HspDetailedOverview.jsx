@@ -143,6 +143,7 @@ export default function HspDetailedOverview() {
         set={setF}
         onReset={() => setF(initialFilters(meta))}
         embedded
+        singleSelectUnitRange
         testId="hsp-detailed-filters"
       />
 

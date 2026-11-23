@@ -138,6 +138,7 @@ export default function Emergency112DetailedOverview() {
         set={setF}
         onReset={() => setF(initialFilters(meta))}
         embedded
+        singleSelectUnitRange
         testId="112-detailed-filters"
       />
 

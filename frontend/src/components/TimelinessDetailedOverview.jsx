@@ -146,6 +146,7 @@ export default function TimelinessDetailedOverview() {
         set={setF}
         onReset={() => setF(initialFilters(meta))}
         embedded
+        singleSelectUnitRange
         testId="timeliness-detailed-filters"
       />
 

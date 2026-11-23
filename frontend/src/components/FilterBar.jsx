@@ -118,7 +118,15 @@ function periodsAtOrBefore(periods, base) {
   return periods.slice(0, idx + 1);
 }
 
-export default function FilterBar({ meta, f, set, onReset, embedded = false, testId = "filter-bar" }) {
+export default function FilterBar({
+  meta,
+  f,
+  set,
+  onReset,
+  embedded = false,
+  testId = "filter-bar",
+  singleSelectUnitRange = false,
+}) {
   const upd = (k) => (v) => set((p) => ({ ...p, [k]: v }));
   const simple = meta.domain === "emergency112" || meta.domain === "training" || meta.domain === "antf" || meta.domain === "hsp";
   const snapshot = meta.domain === "antf";
@@ -138,8 +146,10 @@ export default function FilterBar({ meta, f, set, onReset, embedded = false, tes
     return { ...p, period_grain: nextGrain, base: nextBase, latest: nextLatest };
   });
 
-  const selectedUnits = Array.isArray(f.unit) ? f.unit : (f.unit && f.unit !== "All" ? [f.unit] : []);
-  const selectedRanges = Array.isArray(f.range) ? f.range : (f.range && f.range !== "All" ? [f.range] : []);
+  const selectedUnitsRaw = Array.isArray(f.unit) ? f.unit : (f.unit && f.unit !== "All" ? [f.unit] : []);
+  const selectedRangesRaw = Array.isArray(f.range) ? f.range : (f.range && f.range !== "All" ? [f.range] : []);
+  const selectedUnits = singleSelectUnitRange ? selectedUnitsRaw.slice(0, 1) : selectedUnitsRaw;
+  const selectedRanges = singleSelectUnitRange ? selectedRangesRaw.slice(0, 1) : selectedRangesRaw;
   const unitsSelected = selectedUnits.length > 0;
   const rangesSelected = selectedRanges.length > 0;
 
@@ -166,18 +176,22 @@ export default function FilterBar({ meta, f, set, onReset, embedded = false, tes
   });
 
   const setUnit = (next) => set((p) => {
-    if (!next.length) return { ...p, unit: [] };
-    const allowed = [...new Set(next.map((u) => unitRanges[u]).filter(Boolean))];
+    const unit = singleSelectUnitRange ? next.slice(0, 1) : next;
+    if (!unit.length) return { ...p, unit: [] };
+    const allowed = [...new Set(unit.map((u) => unitRanges[u]).filter(Boolean))];
     const cur = Array.isArray(p.range) ? p.range : (p.range && p.range !== "All" ? [p.range] : []);
-    const range = cur.length ? cur.filter((r) => allowed.includes(r)) : [];
-    return { ...p, unit: next, range };
+    const clippedCur = singleSelectUnitRange ? cur.slice(0, 1) : cur;
+    const range = clippedCur.length ? clippedCur.filter((r) => allowed.includes(r)) : [];
+    return { ...p, unit, range };
   });
 
   const setRange = (next) => set((p) => {
-    if (!next.length) return { ...p, range: [] };
+    const range = singleSelectUnitRange ? next.slice(0, 1) : next;
+    if (!range.length) return { ...p, range: [] };
     const cur = Array.isArray(p.unit) ? p.unit : (p.unit && p.unit !== "All" ? [p.unit] : []);
-    const unit = cur.filter((u) => next.includes(unitRanges[u]));
-    return { ...p, range: next, unit };
+    const clippedCur = singleSelectUnitRange ? cur.slice(0, 1) : cur;
+    const unit = clippedCur.filter((u) => range.includes(unitRanges[u]));
+    return { ...p, range, unit };
   });
 
   const grid = snapshot
@@ -188,7 +202,16 @@ export default function FilterBar({ meta, f, set, onReset, embedded = false, tes
         ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[1.2fr_1.1fr_1fr_1fr_1.1fr_auto]"
         : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[1.3fr_1.1fr_1.2fr_1fr_1fr_1.1fr_auto]";
 
-  const unitField = (
+  const unitField = singleSelectUnitRange ? (
+    <Field
+      label="Unit"
+      value={selectedUnits[0] || "All"}
+      onChange={(v) => setUnit(v === "All" ? [] : [v])}
+      options={unitsForRange}
+      allLabel="All units"
+      testId="filter-unit"
+    />
+  ) : (
     <MultiField
       label="Unit"
       values={selectedUnits}
@@ -199,7 +222,17 @@ export default function FilterBar({ meta, f, set, onReset, embedded = false, tes
     />
   );
 
-  const rangeField = (
+  const rangeField = singleSelectUnitRange ? (
+    <Field
+      label="Range"
+      value={selectedRanges[0] || "All"}
+      onChange={(v) => setRange(v === "All" ? [] : [v])}
+      options={meta.ranges || []}
+      allLabel="All ranges"
+      disabledOptions={rangeDisabled}
+      testId="filter-range"
+    />
+  ) : (
     <MultiField
       label="Range"
       values={selectedRanges}
@@ -220,9 +253,8 @@ export default function FilterBar({ meta, f, set, onReset, embedded = false, tes
     >
       <div className={`grid ${grid} gap-3 items-end`}>
         {!simple && <Field label="Case type" value={f.type} onChange={upd("type")} options={meta.types} testId="filter-type" />}
-        {simple && unitField}
         {rangeField}
-        {!simple && unitField}
+        {unitField}
         {hasPeriodGrain && (
           <Field
             label="Period view"
