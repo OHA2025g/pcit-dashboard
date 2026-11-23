@@ -224,7 +224,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
           <Kpi testId="kpi-latest-rate" label={`Latest ${labels.rate.toLowerCase()}`} value={`${fmt(s.latest_rate)}%`} sub={f.latest} accent
             formula={{ description: `${labels.rate} for the latest period from summed statewide counts.`, expression: `(Σ ${labels.num} ÷ Σ ${labels.den}) × 100`, example: `(${fmtInt(s.latest_num)} ÷ ${fmtInt(s.latest_den)}) × 100 = ${fmt(s.latest_rate)}%` }} />
           <Kpi testId="kpi-improvement" label="Improvement" value={<Delta value={s.improvement} />} sub="Latest − base rate"
-            formula={{ description: "Change in the statewide rate between latest and base periods (pp).", expression: "Latest rate − Base rate", example: `${fmt(s.latest_rate)}% − ${fmt(s.base_rate)}% = ${s.improvement == null ? "—" : `${s.improvement >= 0 ? "+" : ""}${fmt(s.improvement)} pp`}` }} />
+            formula={{ description: "Change in the statewide rate between latest and base periods. pp = percentage points: the absolute difference between two rates (not a percent-of-percent change). Example: 50% → 46.8% is −3.20 pp.", expression: "Latest rate − Base rate", example: `${fmt(s.latest_rate)}% − ${fmt(s.base_rate)}% = ${s.improvement == null ? "—" : `${s.improvement >= 0 ? "+" : ""}${fmt(s.improvement)} pp`}` }} />
         </motion.div>
       </div>
 
@@ -246,7 +246,7 @@ export default function KpiRow({ domain, data, f, labels, included }) {
           <Kpi testId="kpi-unit-latest-rate" label={`Latest ${labels.rate.toLowerCase()}`} value={`${fmt(sel.latest_rate)}%`} sub={f.latest} accent
             formula={{ description: `${labels.rate} for the filtered selection in the latest period.`, expression: `(Σ ${labels.num} ÷ Σ ${labels.den}) × 100`, example: `(${fmtInt(sel.latest_num)} ÷ ${fmtInt(sel.latest_den)}) × 100 = ${fmt(sel.latest_rate)}%` }} />
           <Kpi testId="kpi-unit-improvement" label="Improvement" value={<Delta value={sel.improvement} />} sub="Latest − base rate"
-            formula={{ description: "Change in the filtered selection’s rate between latest and base periods (pp).", expression: "Selection latest rate − Selection base rate", example: `${fmt(sel.latest_rate)}% − ${fmt(sel.base_rate)}% = ${sel.improvement == null ? "—" : `${sel.improvement >= 0 ? "+" : ""}${fmt(sel.improvement)} pp`}` }} />
+            formula={{ description: "Change in the filtered selection’s rate between latest and base periods. pp = percentage points: the absolute difference between two rates (not a percent-of-percent change). Example: 50% → 46.8% is −3.20 pp.", expression: "Selection latest rate − Selection base rate", example: `${fmt(sel.latest_rate)}% − ${fmt(sel.base_rate)}% = ${sel.improvement == null ? "—" : `${sel.improvement >= 0 ? "+" : ""}${fmt(sel.improvement)} pp`}` }} />
           <Kpi testId="kpi-avg-score" label="Avg overall score" value={fmt(sel.avg_overall_score)}
             sub={`${sel.scored_count} scored${top ? ` · #1 ${top.unit}` : ""}`} accent
             formula={{ description: `Mean overall score of scored units in the current selection. Unit overall = ${w}% performance + ${iw}% improvement.`, expression: `AVERAGEIF(Include=1, Overall score)`, example: `${sel.scored_count} of ${sel.unit_count} units scored · average ${fmt(sel.avg_overall_score)}` }} />

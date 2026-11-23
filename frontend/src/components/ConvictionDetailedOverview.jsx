@@ -209,8 +209,8 @@ export default function ConvictionDetailedOverview() {
                 testId="ov-det-kpi-change"
                 formula={{
                   description: isAll
-                    ? "Statewide latest rate minus base rate."
-                    : "Selection latest rate minus base rate. Subtitle is selection latest minus statewide latest.",
+                    ? "Statewide latest rate minus base rate. pp = percentage points: the absolute difference between two rates (not a percent-of-percent change). Example: 50% → 46.8% is −3.20 pp."
+                    : "Selection latest rate minus base rate. Subtitle is selection latest minus statewide latest. pp = percentage points: the absolute difference between two rates (not a percent-of-percent change).",
                   expression: isAll ? "Latest − Base" : "Latest − Base · Gap = Selection − State",
                   example: `${fmt(k.latest_rate)}% − ${fmt(k.base_rate)}%`,
                 }}

@@ -225,7 +225,7 @@ export default function ConvictionExecutiveOverview({ d: initial }) {
             sub={`${ex.units_improved} of ${ex.unit_count} units improved`}
             testId="ov-conviction-exec-change"
             formula={{
-              description: "Percentage-point change between latest and base statewide rates.",
+              description: "Change between latest and base statewide rates. pp = percentage points: the absolute difference between two rates (not a percent-of-percent change). Example: 50% → 46.8% is −3.20 pp.",
               expression: "Latest rate − Base rate",
               example: `${fmt(k.latest_rate)}% − ${fmt(k.base_rate)}%`,
             }}
