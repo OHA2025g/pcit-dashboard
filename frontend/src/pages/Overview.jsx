@@ -2,18 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Loader2, ArrowRight, TrendingUp, TrendingDown } from "lucide-react";
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
 import { useApi, errMsg } from "@/lib/api";
-import { Panel, Kpi, Delta, CategoryBadge } from "@/components/Primitives";
+import { Panel, Kpi, Delta } from "@/components/Primitives";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CATEGORY_STYLES, fmt, fmtInt, fmtDate } from "@/lib/format";
+import { fmt, fmtInt, fmtDate } from "@/lib/format";
 import MaharashtraMap from "@/components/MaharashtraMap";
+import CategoryDistributionChart from "@/components/CategoryDistributionChart";
 import ConvictionExecutiveOverview from "@/components/ConvictionExecutiveOverview";
 import TimelinessExecutiveOverview from "@/components/TimelinessExecutiveOverview";
 import Emergency112ExecutiveOverview from "@/components/Emergency112ExecutiveOverview";
 import HspExecutiveOverview from "@/components/HspExecutiveOverview";
 import { fadeUp, staggerContainer, staggerFast } from "@/lib/motion";
-import { CHART } from "@/lib/chartTheme";
 
 // Training & ANTF kept for DomainBlock/API; temporarily omitted from Overview tabs only.
 const DOMAIN_ORDER = ["conviction", "timeliness", "emergency112", "hsp"];
@@ -34,32 +33,6 @@ const UnitList = ({ title, icon: Icon, rows, tone, testId }) => (
     ))}
   </div>
 );
-
-const Distribution = ({ dist }) => {
-  const data = Object.entries(dist).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
-  return (
-    <div className="flex h-full min-h-[200px] items-center justify-center gap-6 w-full">
-      <div className="h-44 w-44 shrink-0">
-        <ResponsiveContainer>
-          <PieChart>
-            <Pie data={data} dataKey="value" innerRadius={48} outerRadius={80} paddingAngle={2} stroke="none" isAnimationActive animationDuration={CHART.animationDuration}>
-              {data.map((d) => <Cell key={d.name} fill={(CATEGORY_STYLES[d.name] || CATEGORY_STYLES["Not scored"]).color} />)}
-            </Pie>
-            <Tooltip />
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
-      <div className="space-y-2.5">
-        {Object.entries(dist).map(([k, v]) => (
-          <div key={k} className="flex items-center gap-2.5 text-xs">
-            <CategoryBadge value={k} />
-            <span className="font-num font-semibold text-slate-800">{v}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 const DomainBlock = ({ domain, d }) => (
   <motion.section variants={fadeUp} className="space-y-4" data-testid={`overview-${domain}`}>
@@ -129,7 +102,11 @@ const DomainBlock = ({ domain, d }) => (
         </div>
       </Panel>
       <Panel title="Category distribution" subtitle="Units per category" bodyClassName="flex items-center justify-center">
-        <Distribution dist={d.distribution} />
+        <CategoryDistributionChart
+          dist={d.distribution}
+          unitsByCategory={d.units_by_category || {}}
+          testId={`ov-${domain}-categories`}
+        />
       </Panel>
       <Panel title={(domain === "emergency112" || domain === "training" || domain === "antf" || domain === "hsp") ? "Unit snapshot" : "Range comparison"} subtitle={(domain === "emergency112" || domain === "training" || domain === "antf" || domain === "hsp") ? "Average score" : "Average overall score per range"}>
         <div className="space-y-2.5" data-testid={`ov-${domain}-ranges`}>

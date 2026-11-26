@@ -1,8 +1,7 @@
 import { TrendingUp, TrendingDown } from "lucide-react";
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
-import { Panel, CategoryBadge } from "@/components/Primitives";
-import { CATEGORY_STYLES, fmt } from "@/lib/format";
-import { CHART } from "@/lib/chartTheme";
+import { Panel } from "@/components/Primitives";
+import CategoryDistributionChart, { unitsByCategoryFromRows } from "@/components/CategoryDistributionChart";
+import { fmt } from "@/lib/format";
 
 const UnitList = ({ title, icon: Icon, rows, tone, testId }) => (
   <div data-testid={testId}>
@@ -51,7 +50,7 @@ function buildPanels(rows) {
 export default function ConvictionDashboardPanels({ rows }) {
   const included = rows.filter((r) => r.included !== false);
   const { top, bottom, dist, ranges } = buildPanels(included);
-  const pieData = Object.entries(dist).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
+  const unitsByCategory = unitsByCategoryFromRows(included);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="conviction-dashboard-panels">
@@ -62,26 +61,7 @@ export default function ConvictionDashboardPanels({ rows }) {
         </div>
       </Panel>
       <Panel title="Category distribution" subtitle="Units per category" bodyClassName="flex items-center justify-center">
-        <div className="flex items-center justify-center gap-6 w-full">
-          <div className="h-44 w-44 shrink-0">
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie data={pieData} dataKey="value" innerRadius={48} outerRadius={80} paddingAngle={2} stroke="none" isAnimationActive animationDuration={CHART.animationDuration}>
-                  {pieData.map((d) => <Cell key={d.name} fill={(CATEGORY_STYLES[d.name] || CATEGORY_STYLES["Not scored"]).color} />)}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="space-y-2.5">
-            {Object.entries(dist).map(([k, v]) => (
-              <div key={k} className="flex items-center gap-2.5 text-xs">
-                <CategoryBadge value={k} />
-                <span className="font-num font-semibold text-slate-800">{v}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <CategoryDistributionChart dist={dist} unitsByCategory={unitsByCategory} testId="conviction-dash-categories" />
       </Panel>
       <Panel title="Range comparison" subtitle="Average overall score per range">
         <div className="space-y-2.5" data-testid="conviction-dash-ranges">

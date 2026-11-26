@@ -1,8 +1,7 @@
 import { TrendingUp, TrendingDown } from "lucide-react";
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
-import { Panel, CategoryBadge } from "@/components/Primitives";
-import { CATEGORY_STYLES, fmt } from "@/lib/format";
-import { CHART } from "@/lib/chartTheme";
+import { Panel } from "@/components/Primitives";
+import CategoryDistributionChart from "@/components/CategoryDistributionChart";
+import { fmt } from "@/lib/format";
 
 const UnitList = ({ title, icon: Icon, rows, tone, testId }) => (
   <div data-testid={testId}>
@@ -22,35 +21,6 @@ const UnitList = ({ title, icon: Icon, rows, tone, testId }) => (
     {!rows?.length && <div className="text-sm text-slate-500 py-2">No scored units</div>}
   </div>
 );
-
-const Distribution = ({ dist }) => {
-  const data = Object.entries(dist || {}).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
-  if (!data.length) {
-    return <div className="text-sm text-slate-500 py-6 text-center">No category data</div>;
-  }
-  return (
-    <div className="flex h-full min-h-[200px] items-center justify-center gap-6 w-full">
-      <div className="h-44 w-44 shrink-0">
-        <ResponsiveContainer>
-          <PieChart>
-            <Pie data={data} dataKey="value" innerRadius={48} outerRadius={80} paddingAngle={2} stroke="none" isAnimationActive animationDuration={CHART.animationDuration}>
-              {data.map((d) => <Cell key={d.name} fill={(CATEGORY_STYLES[d.name] || CATEGORY_STYLES["Not scored"]).color} />)}
-            </Pie>
-            <Tooltip />
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
-      <div className="space-y-2.5">
-        {Object.entries(dist || {}).map(([k, v]) => (
-          <div key={k} className="flex items-center gap-2.5 text-xs">
-            <CategoryBadge value={k} />
-            <span className="font-num font-semibold text-slate-800">{v}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 /**
  * Cohort panels: Top & bottom, Category distribution, Range comparison.
@@ -72,7 +42,11 @@ export default function DomainSnapshotPanels({ domain, snapshot, rateLabel = "La
         </div>
       </Panel>
       <Panel title="Category distribution" subtitle="Units per category" bodyClassName="flex items-center justify-center">
-        <Distribution dist={snapshot.distribution} />
+        <CategoryDistributionChart
+          dist={snapshot.distribution}
+          unitsByCategory={snapshot.units_by_category || {}}
+          testId={`${testIdPrefix}-categories`}
+        />
       </Panel>
       <Panel
         title={useRangeComparison ? "Range comparison" : "Unit snapshot"}

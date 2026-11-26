@@ -765,9 +765,14 @@ async def overview(member: dict = Depends(viewer)):
         scored = sorted([r for r in rows if r["rank"]], key=lambda r: r["rank"])
         cats = categories_for(domain)
         dist = {c: sum(1 for r in rows if r["category"] == c) for c in cats}
+        units_by_category = {
+            c: sorted(r["unit"] for r in rows if r.get("category") == c and r.get("unit"))
+            for c in cats
+        }
         range_stats = [x for x in range_stats if x["range"] or domain not in ("emergency112", "training", "antf", "hsp")]
         payload = {"type": type_, "base": b, "latest": l, "totals": totals(domain, rows),
                    "top": scored[:5], "bottom": scored[-5:][::-1], "distribution": dist,
+                   "units_by_category": units_by_category,
                    "ranges": sorted(range_stats, key=lambda x: -(x["avg_overall_score"] or 0)),
                    "as_of": ds["uploaded_at"], "scope_range": rng}
         if domain == "conviction":
