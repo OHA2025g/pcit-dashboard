@@ -54,7 +54,7 @@ const Distribution = ({ dist }) => {
 
 /**
  * Cohort panels: Top & bottom, Category distribution, Range comparison.
- * Prefer ConvictionDashboardPanels (from live rows) on Unit level details.
+ * Prefer ConvictionDashboardPanels (from live rows) on domain Overview tabs.
  */
 export default function DomainSnapshotPanels({ domain, snapshot, rateLabel = "Latest rate", testIdPrefix = "snap" }) {
   if (!snapshot) return null;

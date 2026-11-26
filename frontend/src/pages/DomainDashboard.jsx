@@ -6,7 +6,6 @@ import ChartsPanel from "@/components/ChartsPanel";
 import RankingTable from "@/components/RankingTable";
 import ExplainDialog from "@/components/ExplainDialog";
 import KpiRow from "@/components/KpiRow";
-import ConvictionDashboardPanels from "@/components/ConvictionDashboardPanels";
 import ConvictionDetailedOverview from "@/components/ConvictionDetailedOverview";
 import TimelinessDetailedOverview from "@/components/TimelinessDetailedOverview";
 import Emergency112DetailedOverview from "@/components/Emergency112DetailedOverview";
@@ -74,6 +73,14 @@ export default function DomainDashboard({ domain }) {
     ...(domain === "emergency112" ? { "Period view": f.period_grain || "monthly" } : {}),
     ...(meta?.scope_range ? { "Access scope": meta.scope_range } : {}),
   }), [f, meta, domain]);
+
+  const unitCategories = useMemo(() => {
+    const map = {};
+    for (const r of data?.rows || []) {
+      if (r?.unit && r.category) map[r.unit] = r.category;
+    }
+    return map;
+  }, [data]);
 
   if (error) return <div className="text-rose-700 text-sm mt-10" data-testid="dashboard-error">{error}</div>;
   if (!meta || !f) return <div className="flex items-center gap-2 text-slate-500 mt-20 justify-center"><Loader2 className="h-5 w-5 animate-spin" />Loading…</div>;
@@ -158,19 +165,18 @@ export default function DomainDashboard({ domain }) {
             <ConvictionDetailedOverview />
           </TabsContent>
           <TabsContent value="rankings" className="mt-0 focus-visible:ring-0">
-            <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} />
+            <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} unitCategories={unitCategories} />
             {samePeriod && <div className="mt-4 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="same-period-warning"><Info className="h-4 w-4" />Base and latest period are the same — improvement will be zero.</div>}
             {meta.scope_range && <div className="mt-4 text-xs text-slate-600 bg-sky-50 border border-sky-200 px-3 py-2 rounded-sm" data-testid="scope-notice">Showing units of <b>{meta.scope_range}</b> only. Ranks and scores are computed against the full statewide cohort.</div>}
             {!data ? <div className="flex items-center gap-2 text-slate-500 mt-16 justify-center"><Loader2 className="h-5 w-5 animate-spin" />Calculating scores…</div> : (
               <div className="space-y-5 mt-5">
                 <KpiRow domain={domain} data={data} f={f} labels={labels} included={included} />
-                <ConvictionDashboardPanels rows={data.rows} />
                 <ChartsPanel domain={domain} rows={included} onSelectUnit={setExplainUnit} filterLabel={`${f.type} · ${f.base} → ${f.latest}`} />
               </div>
             )}
           </TabsContent>
           <TabsContent value="score-table" className="mt-0 focus-visible:ring-0">
-            <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} />
+            <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} unitCategories={unitCategories} />
             {samePeriod && <div className="mt-4 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="same-period-warning"><Info className="h-4 w-4" />Base and latest period are the same — improvement will be zero.</div>}
             {meta.scope_range && <div className="mt-4 text-xs text-slate-600 bg-sky-50 border border-sky-200 px-3 py-2 rounded-sm" data-testid="scope-notice">Showing units of <b>{meta.scope_range}</b> only. Ranks and scores are computed against the full statewide cohort.</div>}
             {!data ? <div className="flex items-center gap-2 text-slate-500 mt-16 justify-center"><Loader2 className="h-5 w-5 animate-spin" />Calculating scores…</div> : (
@@ -210,19 +216,18 @@ export default function DomainDashboard({ domain }) {
             <TimelinessDetailedOverview />
           </TabsContent>
           <TabsContent value="rankings" className="mt-0 focus-visible:ring-0">
-            <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} />
+            <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} unitCategories={unitCategories} />
             {samePeriod && <div className="mt-4 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="same-period-warning"><Info className="h-4 w-4" />Base and latest period are the same — improvement will be zero.</div>}
             {meta.scope_range && <div className="mt-4 text-xs text-slate-600 bg-sky-50 border border-sky-200 px-3 py-2 rounded-sm" data-testid="scope-notice">Showing units of <b>{meta.scope_range}</b> only. Ranks and scores are computed against the full statewide cohort.</div>}
             {!data ? <div className="flex items-center gap-2 text-slate-500 mt-16 justify-center"><Loader2 className="h-5 w-5 animate-spin" />Calculating scores…</div> : (
               <div className="space-y-5 mt-5">
                 <KpiRow domain={domain} data={data} f={f} labels={labels} included={included} />
-                <ConvictionDashboardPanels rows={data.rows} />
                 <ChartsPanel domain={domain} rows={included} onSelectUnit={setExplainUnit} filterLabel={`${f.type} · ${f.base} → ${f.latest}`} />
               </div>
             )}
           </TabsContent>
           <TabsContent value="score-table" className="mt-0 focus-visible:ring-0">
-            <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} />
+            <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} unitCategories={unitCategories} />
             {samePeriod && <div className="mt-4 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="same-period-warning"><Info className="h-4 w-4" />Base and latest period are the same — improvement will be zero.</div>}
             {meta.scope_range && <div className="mt-4 text-xs text-slate-600 bg-sky-50 border border-sky-200 px-3 py-2 rounded-sm" data-testid="scope-notice">Showing units of <b>{meta.scope_range}</b> only. Ranks and scores are computed against the full statewide cohort.</div>}
             {!data ? <div className="flex items-center gap-2 text-slate-500 mt-16 justify-center"><Loader2 className="h-5 w-5 animate-spin" />Calculating scores…</div> : (
@@ -262,13 +267,12 @@ export default function DomainDashboard({ domain }) {
             <Emergency112DetailedOverview />
           </TabsContent>
           <TabsContent value="rankings" className="mt-0 focus-visible:ring-0">
-            <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} />
+            <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} unitCategories={unitCategories} />
             {samePeriod && <div className="mt-4 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="same-period-warning"><Info className="h-4 w-4" />Base and latest period are the same — improvement will be zero.</div>}
             {meta.scope_range && <div className="mt-4 text-xs text-slate-600 bg-sky-50 border border-sky-200 px-3 py-2 rounded-sm" data-testid="scope-notice">Showing units of <b>{meta.scope_range}</b> only. Ranks and scores are computed against the full statewide cohort.</div>}
             {!data ? <div className="flex items-center gap-2 text-slate-500 mt-16 justify-center"><Loader2 className="h-5 w-5 animate-spin" />Calculating scores…</div> : (
               <div className="space-y-5 mt-5">
                 <KpiRow domain={domain} data={data} f={f} labels={labels} included={included} />
-                <ConvictionDashboardPanels rows={data.rows} />
                 <ChartsPanel
                   domain={domain}
                   rows={included}
@@ -279,7 +283,7 @@ export default function DomainDashboard({ domain }) {
             )}
           </TabsContent>
           <TabsContent value="score-table" className="mt-0 focus-visible:ring-0">
-            <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} />
+            <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} unitCategories={unitCategories} />
             {samePeriod && <div className="mt-4 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="same-period-warning"><Info className="h-4 w-4" />Base and latest period are the same — improvement will be zero.</div>}
             {meta.scope_range && <div className="mt-4 text-xs text-slate-600 bg-sky-50 border border-sky-200 px-3 py-2 rounded-sm" data-testid="scope-notice">Showing units of <b>{meta.scope_range}</b> only. Ranks and scores are computed against the full statewide cohort.</div>}
             {!data ? <div className="flex items-center gap-2 text-slate-500 mt-16 justify-center"><Loader2 className="h-5 w-5 animate-spin" />Calculating scores…</div> : (
@@ -319,13 +323,12 @@ export default function DomainDashboard({ domain }) {
             <HspDetailedOverview />
           </TabsContent>
           <TabsContent value="rankings" className="mt-0 focus-visible:ring-0">
-            <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} />
+            <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} unitCategories={unitCategories} />
             {samePeriod && <div className="mt-4 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="same-period-warning"><Info className="h-4 w-4" />Base and latest period are the same — improvement will be zero.</div>}
             {meta.scope_range && <div className="mt-4 text-xs text-slate-600 bg-sky-50 border border-sky-200 px-3 py-2 rounded-sm" data-testid="scope-notice">Showing units of <b>{meta.scope_range}</b> only. Ranks and scores are computed against the full statewide cohort.</div>}
             {!data ? <div className="flex items-center gap-2 text-slate-500 mt-16 justify-center"><Loader2 className="h-5 w-5 animate-spin" />Calculating scores…</div> : (
               <div className="space-y-5 mt-5">
                 <KpiRow domain={domain} data={data} f={f} labels={labels} included={included} />
-                <ConvictionDashboardPanels rows={data.rows} />
                 <ChartsPanel
                   domain={domain}
                   rows={included}
@@ -336,7 +339,7 @@ export default function DomainDashboard({ domain }) {
             )}
           </TabsContent>
           <TabsContent value="score-table" className="mt-0 focus-visible:ring-0">
-            <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} />
+            <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} unitCategories={unitCategories} />
             {samePeriod && <div className="mt-4 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="same-period-warning"><Info className="h-4 w-4" />Base and latest period are the same — improvement will be zero.</div>}
             {meta.scope_range && <div className="mt-4 text-xs text-slate-600 bg-sky-50 border border-sky-200 px-3 py-2 rounded-sm" data-testid="scope-notice">Showing units of <b>{meta.scope_range}</b> only. Ranks and scores are computed against the full statewide cohort.</div>}
             {!data ? <div className="flex items-center gap-2 text-slate-500 mt-16 justify-center"><Loader2 className="h-5 w-5 animate-spin" />Calculating scores…</div> : (
@@ -349,7 +352,7 @@ export default function DomainDashboard({ domain }) {
         </Tabs>
       ) : (
         <>
-          <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} />
+          <FilterBar meta={meta} f={f} set={setF} onReset={() => setF(initial(meta))} unitCategories={unitCategories} />
           {samePeriod && domain !== "antf" && <div className="mt-4 flex items-center gap-2 text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-2 rounded-sm" data-testid="same-period-warning"><Info className="h-4 w-4" />Base and latest period are the same — improvement will be zero.</div>}
           {meta.scope_range && <div className="mt-4 text-xs text-slate-600 bg-sky-50 border border-sky-200 px-3 py-2 rounded-sm" data-testid="scope-notice">Showing units of <b>{meta.scope_range}</b> only. Ranks and scores are computed against the full statewide cohort.</div>}
           {!data ? <div className="flex items-center gap-2 text-slate-500 mt-16 justify-center"><Loader2 className="h-5 w-5 animate-spin" />Calculating scores…</div> : (

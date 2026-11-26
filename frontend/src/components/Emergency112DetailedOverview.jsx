@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import {
@@ -8,6 +8,7 @@ import {
 import { Panel, Kpi, CategoryBadge } from "@/components/Primitives";
 import ChartExplainButton from "@/components/ChartExplainButton";
 import FilterBar from "@/components/FilterBar";
+import ConvictionDashboardPanels from "@/components/ConvictionDashboardPanels";
 import { useApi, errMsg } from "@/lib/api";
 import { fmt, fmtInt, fmtDate, fmtDuration } from "@/lib/format";
 import { CHART, TipBox } from "@/lib/chartTheme";
@@ -73,6 +74,7 @@ export default function Emergency112DetailedOverview() {
   const [meta, setMeta] = useState(null);
   const [f, setF] = useState(null);
   const [payload, setPayload] = useState(null);
+  const [dashRows, setDashRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -89,20 +91,41 @@ export default function Emergency112DetailedOverview() {
     if (!f) return;
     setLoading(true);
     setError(null);
-    api("get", "/emergency112/detailed", {
-      params: {
-        unit: filterParam(f.unit),
-        base: f.base,
-        latest: f.latest,
-        range: filterParam(f.range),
-        category: f.category || "All",
-      },
-    })
-      .then((res) => { setPayload(res); setLoading(false); })
+    const filterParams = {
+      unit: filterParam(f.unit),
+      base: f.base,
+      latest: f.latest,
+      range: filterParam(f.range),
+      category: f.category || "All",
+    };
+    Promise.all([
+      api("get", "/emergency112/detailed", { params: filterParams }),
+      api("get", "/dashboard", {
+        params: {
+          domain: "emergency112",
+          type: f.type || "All",
+          grain: f.period_grain || "monthly",
+          ...filterParams,
+        },
+      }),
+    ])
+      .then(([res, dash]) => {
+        setPayload(res);
+        setDashRows(dash?.rows || []);
+        setLoading(false);
+      })
       .catch((e) => { setError(errMsg(e)); setLoading(false); });
   }, [api, f]);
 
   useEffect(() => { load(); }, [load]);
+
+  const unitCategories = useMemo(() => {
+    const map = {};
+    for (const r of dashRows) {
+      if (r?.unit && r.category) map[r.unit] = r.category;
+    }
+    return map;
+  }, [dashRows]);
 
   if (error) return <div className="text-rose-700 text-sm" data-testid="112-detailed-error">{error}</div>;
   if (!meta || !f) {
@@ -139,6 +162,7 @@ export default function Emergency112DetailedOverview() {
         onReset={() => setF(initialFilters(meta))}
         embedded
         singleSelectUnitRange
+        unitCategories={unitCategories}
         testId="112-detailed-filters"
       />
 
@@ -212,6 +236,12 @@ export default function Emergency112DetailedOverview() {
                 }}
               />
             </motion.div>
+
+            {dashRows.length > 0 && (
+              <div className="mt-4">
+                <ConvictionDashboardPanels rows={dashRows} />
+              </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
               <Panel

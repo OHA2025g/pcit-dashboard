@@ -1,14 +1,22 @@
+import { useEffect } from "react";
 import { ChevronDown, RotateCcw } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { clampLatestToBase, periodsAtOrBefore } from "@/lib/periodFilters";
 
-const Field = ({ label, value, onChange, options, testId, allLabel, disabledOptions = [] }) => (
+const Field = ({ label, value, onChange, options, testId, allLabel, disabledOptions = [], disabled = false }) => (
   <div className="min-w-0">
     <div className="text-[10px] uppercase tracking-[0.14em] font-semibold text-slate-500 mb-1.5">{label}</div>
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="h-9 rounded-sm bg-white text-sm border-slate-200 focus:ring-2 focus:ring-teal-600/35" data-testid={testId}>
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
+      <SelectTrigger
+        className={cn(
+          "h-9 rounded-sm bg-white text-sm border-slate-200 focus:ring-2 focus:ring-teal-600/35",
+          disabled && "opacity-60 cursor-not-allowed bg-slate-50",
+        )}
+        data-testid={testId}
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent className="max-h-72 rounded-sm">
@@ -16,13 +24,13 @@ const Field = ({ label, value, onChange, options, testId, allLabel, disabledOpti
         {options.map((o) => {
           const optValue = typeof o === "object" && o != null ? o.value : o;
           const optLabel = typeof o === "object" && o != null ? (o.label ?? o.value) : o;
-          const disabled = disabledOptions.includes(optValue);
+          const optDisabled = disabledOptions.includes(optValue);
           return (
             <SelectItem
               key={optValue}
               value={optValue}
-              disabled={disabled}
-              className={disabled ? "text-slate-400 opacity-50" : undefined}
+              disabled={optDisabled}
+              className={optDisabled ? "text-slate-400 opacity-50" : undefined}
             >
               {optLabel}
             </SelectItem>
@@ -32,6 +40,13 @@ const Field = ({ label, value, onChange, options, testId, allLabel, disabledOpti
     </Select>
   </div>
 );
+
+/** Rank category is locked for multi unit/range picks, or mirrored from a single unit. */
+function resolveCategory(units, ranges, unitCategories, prevCategory = "All") {
+  if (units.length > 1 || ranges.length > 1) return "All";
+  if (units.length === 1) return unitCategories?.[units[0]] || prevCategory || "All";
+  return prevCategory === undefined ? "All" : prevCategory;
+}
 
 function summarize(selected, allLabel) {
   if (!selected?.length) return allLabel;
@@ -106,18 +121,6 @@ export const MultiField = ({ label, values, onChange, options, allLabel, testId,
   );
 };
 
-function firstPeriodAfter(periods, base) {
-  const idx = periods.indexOf(base);
-  if (idx < 0) return periods[0];
-  return periods[idx + 1] || null;
-}
-
-function periodsAtOrBefore(periods, base) {
-  const idx = periods.indexOf(base);
-  if (idx < 0) return [base];
-  return periods.slice(0, idx + 1);
-}
-
 export default function FilterBar({
   meta,
   f,
@@ -126,6 +129,7 @@ export default function FilterBar({
   embedded = false,
   testId = "filter-bar",
   singleSelectUnitRange = false,
+  unitCategories = {},
 }) {
   const upd = (k) => (v) => set((p) => ({ ...p, [k]: v }));
   const simple = meta.domain === "emergency112" || meta.domain === "training" || meta.domain === "antf" || meta.domain === "hsp";
@@ -152,6 +156,9 @@ export default function FilterBar({
   const selectedRanges = singleSelectUnitRange ? selectedRangesRaw.slice(0, 1) : selectedRangesRaw;
   const unitsSelected = selectedUnits.length > 0;
   const rangesSelected = selectedRanges.length > 0;
+  const multiUnitOrRange = selectedUnits.length > 1 || selectedRanges.length > 1;
+  const singleUnitSelected = selectedUnits.length === 1;
+  const categoryFrozen = multiUnitOrRange || singleUnitSelected;
 
   const allowedRangesFromUnits = unitsSelected
     ? [...new Set(selectedUnits.map((u) => unitRanges[u]).filter(Boolean))]
@@ -163,36 +170,61 @@ export default function FilterBar({
     ? (meta.units || []).filter((u) => selectedRanges.includes(unitRanges[u]))
     : (meta.units || []);
 
-  const setBase = (v) => set((p) => {
-    const nextLatest = firstPeriodAfter(periods, v);
-    const latestIdx = periods.indexOf(p.latest);
-    const baseIdx = periods.indexOf(v);
-    const latestStillValid = latestIdx > baseIdx;
-    return {
-      ...p,
-      base: v,
-      latest: latestStillValid ? p.latest : (nextLatest || p.latest),
-    };
-  });
+  const setBase = (v) => set((p) => ({
+    ...p,
+    base: v,
+    latest: clampLatestToBase(periods, v, p.latest),
+  }));
 
   const setUnit = (next) => set((p) => {
     const unit = singleSelectUnitRange ? next.slice(0, 1) : next;
-    if (!unit.length) return { ...p, unit: [] };
-    const allowed = [...new Set(unit.map((u) => unitRanges[u]).filter(Boolean))];
     const cur = Array.isArray(p.range) ? p.range : (p.range && p.range !== "All" ? [p.range] : []);
     const clippedCur = singleSelectUnitRange ? cur.slice(0, 1) : cur;
+    if (!unit.length) {
+      return {
+        ...p,
+        unit: [],
+        category: resolveCategory([], clippedCur, unitCategories, "All"),
+      };
+    }
+    const allowed = [...new Set(unit.map((u) => unitRanges[u]).filter(Boolean))];
     const range = clippedCur.length ? clippedCur.filter((r) => allowed.includes(r)) : [];
-    return { ...p, unit, range };
+    return {
+      ...p,
+      unit,
+      range,
+      category: resolveCategory(unit, range, unitCategories, "All"),
+    };
   });
 
   const setRange = (next) => set((p) => {
     const range = singleSelectUnitRange ? next.slice(0, 1) : next;
-    if (!range.length) return { ...p, range: [] };
     const cur = Array.isArray(p.unit) ? p.unit : (p.unit && p.unit !== "All" ? [p.unit] : []);
     const clippedCur = singleSelectUnitRange ? cur.slice(0, 1) : cur;
+    if (!range.length) {
+      return {
+        ...p,
+        range: [],
+        category: resolveCategory(clippedCur, [], unitCategories, singleUnitSelected ? (unitCategories?.[clippedCur[0]] || "All") : "All"),
+      };
+    }
     const unit = clippedCur.filter((u) => range.includes(unitRanges[u]));
-    return { ...p, range, unit };
+    return {
+      ...p,
+      range,
+      unit,
+      category: resolveCategory(unit, range, unitCategories, "All"),
+    };
   });
+
+  useEffect(() => {
+    if (!singleUnitSelected) return undefined;
+    const unitName = selectedUnits[0];
+    const cat = unitCategories?.[unitName];
+    if (!cat || cat === f.category) return undefined;
+    set((p) => ({ ...p, category: cat }));
+    return undefined;
+  }, [singleUnitSelected, selectedUnits, unitCategories, f.category, set]);
 
   const grid = snapshot
     ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-[1.2fr_1.1fr_1.2fr_auto]"
@@ -284,7 +316,15 @@ export default function FilterBar({
             />
           </>
         )}
-        <Field label={simple ? "Category" : "Rank category"} value={f.category} onChange={upd("category")} options={meta.categories} allLabel="All categories" testId="filter-category" />
+        <Field
+          label={simple ? "Category" : "Rank category"}
+          value={f.category || "All"}
+          onChange={upd("category")}
+          options={meta.categories}
+          allLabel="All categories"
+          disabled={categoryFrozen}
+          testId="filter-category"
+        />
         <Button variant="ghost" size="sm" className="h-9 w-full sm:w-auto rounded-sm text-slate-600 hover:text-slate-900 hover:bg-teal-50 justify-center" onClick={onReset} data-testid="filter-reset">
           <RotateCcw className="h-4 w-4 mr-1.5" />Reset
         </Button>

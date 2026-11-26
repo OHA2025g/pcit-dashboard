@@ -12,6 +12,7 @@ import { useApi, errMsg } from "@/lib/api";
 import { fmt, fmtInt, fmtDate, fmtDuration } from "@/lib/format";
 import { CHART, TipBox } from "@/lib/chartTheme";
 import { fadeUp, staggerFast } from "@/lib/motion";
+import { clampLatestToBase, periodsAtOrBefore } from "@/lib/periodFilters";
 
 const EXEC = {
   primary: "#0F3D5E",
@@ -32,7 +33,7 @@ function shortPeriod(p) {
   return String(p).replace(/20(\d{2})/, "$1");
 }
 
-const FilterField = ({ label, value, onChange, options, testId }) => (
+const FilterField = ({ label, value, onChange, options, testId, disabledOptions = [] }) => (
   <div className="min-w-0">
     <div className="text-[10px] uppercase tracking-[0.14em] font-semibold text-slate-500 mb-1.5">{label}</div>
     <Select value={value} onValueChange={onChange}>
@@ -40,9 +41,19 @@ const FilterField = ({ label, value, onChange, options, testId }) => (
         <SelectValue />
       </SelectTrigger>
       <SelectContent className="max-h-72 rounded-sm">
-        {options.map((o) => (
-          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-        ))}
+        {options.map((o) => {
+          const disabled = disabledOptions.includes(o.value);
+          return (
+            <SelectItem
+              key={o.value}
+              value={o.value}
+              disabled={disabled}
+              className={disabled ? "text-slate-400 opacity-50" : undefined}
+            >
+              {o.label}
+            </SelectItem>
+          );
+        })}
       </SelectContent>
     </Select>
   </div>
@@ -91,10 +102,13 @@ export default function Emergency112ExecutiveOverview({ d: initial }) {
     load();
   }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const periodOptions = useMemo(() => {
-    const periods = payload?.periods || initial?.periods || [];
-    return periods.map((p) => ({ value: p, label: p }));
-  }, [payload, initial]);
+  const periods = useMemo(() => payload?.periods || initial?.periods || [], [payload, initial]);
+  const periodOptions = useMemo(() => periods.map((p) => ({ value: p, label: p })), [periods]);
+  const latestDisabled = useMemo(() => periodsAtOrBefore(periods, base), [periods, base]);
+  const onBaseChange = (v) => {
+    setBase(v);
+    setLatest((cur) => clampLatestToBase(periods, v, cur));
+  };
 
   const ex = payload?.executive;
   const asOf = payload?.as_of || initial?.as_of;
@@ -145,7 +159,7 @@ export default function Emergency112ExecutiveOverview({ d: initial }) {
         <FilterField
           label="Base month"
           value={base}
-          onChange={setBase}
+          onChange={onBaseChange}
           options={periodOptions}
           testId="ov-112-filter-base"
         />
@@ -154,6 +168,7 @@ export default function Emergency112ExecutiveOverview({ d: initial }) {
           value={latest}
           onChange={setLatest}
           options={periodOptions}
+          disabledOptions={latestDisabled}
           testId="ov-112-filter-latest"
         />
         <div className="min-w-0">
