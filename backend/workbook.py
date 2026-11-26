@@ -28,6 +28,13 @@ RANGE_ALIASES = {
     "Thane Range": "Kokan Range",
 }
 
+# Parent range label in Excel for city commissionerates (treated as range-level, not units).
+COMMISSIONERATE_PARENT_RANGES = frozenset({
+    "Total Commrs.",
+    "Total Commrs",
+    "Commissionerates",
+})
+
 # Legacy HSP workbook unit labels → canonical HSP display names
 HSP_UNIT_ALIASES = {
     "C.S.Nagarcity": "Chh. Sambhaji N. (C)",
@@ -41,6 +48,56 @@ HSP_UNIT_ALIASES = {
 def _normalize_range(v) -> str:
     rng = str(v or "").strip()
     return RANGE_ALIASES.get(rng, rng)
+
+
+def is_commissionerate_parent_range(rng: str) -> bool:
+    return (rng or "").strip() in COMMISSIONERATE_PARENT_RANGES
+
+
+def promote_commissionerates_in_facts(by_type: dict, extra_commissionerate_names: set | None = None) -> set[str]:
+    """Make each commissionerate its own range (for the Range filter), not a Unit.
+
+    Excel stores city commissionerates under parent range ``Total Commrs.``.
+    After this pass:
+    - each such unit's ``range`` becomes the unit name (e.g. ``Pune (C)``)
+    - ``extra_commissionerate_names`` covers cross-domain aliases (HSP/112 names whose
+      attached range is a conviction commissionerate unit name)
+
+    Returns the set of unit names that are commissionerates (range-only in filters).
+    """
+    comms: set[str] = set(extra_commissionerate_names or ())
+    for entry in by_type.values():
+        for unit, rng in entry.get("units") or []:
+            if is_commissionerate_parent_range(rng):
+                comms.add(unit)
+
+    for entry in by_type.values():
+        rebuilt = []
+        seen = set()
+        for unit, rng in entry.get("units") or []:
+            if is_commissionerate_parent_range(rng) or unit in comms or rng in comms:
+                rng = unit
+                comms.add(unit)
+            key = (unit, rng)
+            if key not in seen:
+                seen.add(key)
+                rebuilt.append(key)
+        entry["units"] = rebuilt
+        for fact in (entry.get("facts") or {}).values():
+            fr = fact.get("range", "")
+            fu = fact.get("unit", "")
+            if is_commissionerate_parent_range(fr) or fu in comms or fr in comms:
+                fact["range"] = fu
+                if fu:
+                    comms.add(fu)
+    return comms
+
+
+def is_commissionerate_unit(unit: str, rng: str) -> bool:
+    """True when the unit is a range-level commissionerate (unit name == range name)."""
+    u = (unit or "").strip()
+    r = (rng or "").strip()
+    return bool(u) and u == r
 
 
 def _num(v):
