@@ -6,7 +6,7 @@ import {
 } from "recharts";
 import { Panel } from "@/components/Primitives";
 import ChartExplainButton from "@/components/ChartExplainButton";
-import { CHART, TipBox, keysLegendPayload } from "@/lib/chartTheme";
+import { CHART, TipBox, OrderedLegend } from "@/lib/chartTheme";
 import { resolveChartExplain } from "@/lib/chartExplain";
 
 const COMMON = (d, { workloadAsBar = false, omitWorkload = false } = {}) => [
@@ -481,12 +481,7 @@ function VerticalBarChart({ data, c, byRange, onSelectUnit }) {
       <YAxis tick={{ fontSize: 10, fill: CHART.tick }} reversed={!!c.rank || !!c.flip180} width={42} />
       <Tooltip content={<TipBox />} cursor={{ fill: CHART.cursor }} />
       {c.keys.length > 1 && (
-        <Legend
-          wrapperStyle={{ fontSize: 11 }}
-          verticalAlign="top"
-          height={28}
-          payload={keysLegendPayload(c.keys)}
-        />
+        <Legend wrapperStyle={{ fontSize: 11 }} verticalAlign="top" height={28} content={<OrderedLegend />} />
       )}
       {c.signed && <ReferenceLine y={0} stroke="#334155" />}
       {c.keys.map(([k, name], i) => (
@@ -534,12 +529,7 @@ function HorizontalBarChart({ data, c, byRange, onSelectUnit }) {
       />
       <Tooltip content={<TipBox />} cursor={{ fill: CHART.cursor }} />
       {c.keys.length > 1 && (
-        <Legend
-          wrapperStyle={{ fontSize: 11 }}
-          verticalAlign="top"
-          height={28}
-          payload={keysLegendPayload(c.keys)}
-        />
+        <Legend wrapperStyle={{ fontSize: 11 }} verticalAlign="top" height={28} content={<OrderedLegend />} />
       )}
       {c.signed && <ReferenceLine x={0} stroke="#334155" />}
       {c.keys.map(([k, name], i) => (
@@ -586,12 +576,7 @@ function LinePlotChart({ data, c, byRange, onSelectUnit }) {
       <YAxis tick={{ fontSize: 10, fill: CHART.tick }} width={42} reversed={!!c.rank} />
       <Tooltip content={<TipBox />} cursor={{ stroke: CHART.navySoft, strokeWidth: 1 }} />
       {c.keys.length > 1 && (
-        <Legend
-          wrapperStyle={{ fontSize: 11 }}
-          verticalAlign="top"
-          height={28}
-          payload={keysLegendPayload(c.keys)}
-        />
+        <Legend wrapperStyle={{ fontSize: 11 }} verticalAlign="top" height={28} content={<OrderedLegend />} />
       )}
       {c.signed && <ReferenceLine y={0} stroke="#334155" />}
       {c.keys.map(([k, name], i) => (
@@ -639,12 +624,7 @@ function AreaPlotChart({ data, c, byRange, onSelectUnit }) {
       <YAxis tick={{ fontSize: 10, fill: CHART.tick }} width={42} />
       <Tooltip content={<TipBox />} cursor={{ stroke: CHART.navySoft, strokeWidth: 1 }} />
       {c.keys.length > 1 && (
-        <Legend
-          wrapperStyle={{ fontSize: 11 }}
-          verticalAlign="top"
-          height={28}
-          payload={keysLegendPayload(c.keys)}
-        />
+        <Legend wrapperStyle={{ fontSize: 11 }} verticalAlign="top" height={28} content={<OrderedLegend />} />
       )}
       {c.signed && <ReferenceLine y={0} stroke="#334155" />}
       {c.keys.map(([k, name], i) => {

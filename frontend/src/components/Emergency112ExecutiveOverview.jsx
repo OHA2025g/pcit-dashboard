@@ -10,7 +10,7 @@ import { Panel, Kpi } from "@/components/Primitives";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApi, errMsg } from "@/lib/api";
 import { fmt, fmtInt, fmtDate, fmtDuration } from "@/lib/format";
-import { CHART, TipBox, baseLatestLegend } from "@/lib/chartTheme";
+import { CHART, TipBox, OrderedLegend } from "@/lib/chartTheme";
 import { fadeUp, staggerFast } from "@/lib/motion";
 import { clampLatestToBase, periodsAtOrBefore } from "@/lib/periodFilters";
 
@@ -330,7 +330,7 @@ export default function Emergency112ExecutiveOverview({ d: initial }) {
                   <XAxis type="number" tick={{ fill: EXEC.tick, fontSize: 11 }} unit=" min" />
                   <YAxis type="category" dataKey="label" width={120} tick={{ fill: EXEC.tick, fontSize: 10 }} />
                   <Tooltip content={<TipBox unit=" min" />} />
-                  <Legend payload={baseLatestLegend(EXEC.secondary, EXEC.primary)} />
+                  <Legend content={<OrderedLegend />} />
                   <Bar dataKey="base_minutes" name="Base" fill={EXEC.secondary} radius={[0, 2, 2, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
                   <Bar dataKey="latest_minutes" name="Latest" fill={EXEC.primary} radius={[0, 2, 2, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
                 </BarChart>

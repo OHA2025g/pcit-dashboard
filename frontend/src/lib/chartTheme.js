@@ -30,22 +30,29 @@ export function orderSeriesItems(items, keyFn = (p) => p.dataKey ?? p.id ?? p.va
   return [...items].sort((a, b) => seriesRank(keyFn(a)) - seriesRank(keyFn(b)));
 }
 
-/** Explicit legend payload so Base always appears before Latest. */
-export function baseLatestLegend(baseColor, latestColor, { baseName = "Base", latestName = "Latest" } = {}) {
-  return [
-    { value: baseName, type: "square", id: "base", color: baseColor },
-    { value: latestName, type: "square", id: "latest", color: latestColor },
-  ];
-}
-
-/** Legend payload from chart key pairs in declaration order (Base → Latest). */
-export function keysLegendPayload(keys, colors = CHART.dual) {
-  return keys.map(([k, name], i) => ({
-    value: name,
-    type: "square",
-    id: k,
-    color: colors[i] || CHART.navy,
-  }));
+/**
+ * Custom Recharts Legend content — Recharts 3 reverses series in the default Legend,
+ * so we render Trial→Convicted and Base→Latest ourselves. Other series keep payload order.
+ */
+export function OrderedLegend({ payload }) {
+  const raw = payload || [];
+  if (!raw.length) return null;
+  const keyOf = (p) => p.dataKey ?? p.id ?? p.value ?? p.name;
+  const hasPreferred = raw.some((p) => seriesRank(keyOf(p)) < 50);
+  const items = hasPreferred ? orderSeriesItems(raw, keyOf) : raw;
+  return (
+    <ul className="flex flex-wrap justify-center gap-x-4 gap-y-1 px-2 pt-1 text-[11px] text-slate-600">
+      {items.map((entry) => (
+        <li key={String(entry.value)} className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-block h-2.5 w-2.5 shrink-0 rounded-[2px]"
+            style={{ background: entry.color || CHART.navy }}
+          />
+          <span>{entry.value}</span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export const TipBox = ({ active, payload, label, unit = "" }) => {
