@@ -38,7 +38,8 @@ try:
     from backend.emailer import send_email
     from backend.reports import build_section, render_pdf, render_email, render_explain_email
     from backend.period_grain import (
-        GRAINS, GRAIN_LABELS, normalize_grain, aggregate_112_facts, grain_meta_payload,
+        GRAINS, GRAIN_LABELS, normalize_grain, aggregate_112_facts, aggregate_hsp_facts,
+        grain_meta_payload, parse_month_period,
     )
 except ModuleNotFoundError:
     from auth import auth_router, bind_auth, bootstrap_admin, require_user
@@ -52,7 +53,8 @@ except ModuleNotFoundError:
     )
     from workbook import parse_workbook, WorkbookError, _normalize_range
     from period_grain import (
-        GRAINS, GRAIN_LABELS, normalize_grain, aggregate_112_facts, grain_meta_payload,
+        GRAINS, GRAIN_LABELS, normalize_grain, aggregate_112_facts, aggregate_hsp_facts,
+        grain_meta_payload, parse_month_period,
     )
 
 mongo_url = os.environ['MONGO_URL']
@@ -293,6 +295,16 @@ async def compute(domain, type_, base, latest, member, grain: str = "monthly"):
         monthly_facts = entry["facts"]
         agg_facts, periods = aggregate_112_facts(entry["facts"], grain_norm)
         data = {**data, type_: {"facts": agg_facts, "units": entry["units"]}}
+    elif domain == "hsp":
+        grain_norm = normalize_grain(grain)
+        entry = data[type_]
+        monthly_facts = entry["facts"]
+        # Only grain-aggregate when stored periods are monthly (Mon YYYY)
+        if any(parse_month_period(p) for p in periods):
+            agg_facts, periods = aggregate_hsp_facts(entry["facts"], grain_norm)
+            data = {**data, type_: {"facts": agg_facts, "units": entry["units"]}}
+        else:
+            grain_norm = "monthly"
 
     if base not in periods or latest not in periods:
         raise HTTPException(status_code=400, detail="Unknown period")
@@ -349,7 +361,7 @@ async def meta(domain: str, member: dict = Depends(viewer)):
         "default_base": b, "default_latest": l, "scope_range": rng,
         "dataset": {k: ds[k] for k in ("id", "filename", "source", "uploaded_at", "uploaded_by", "record_count", "unit_count")},
     }
-    if domain == "emergency112":
+    if domain in ("emergency112", "hsp") and any(parse_month_period(p) for p in (ds.get("periods") or [])):
         grains = grain_meta_payload(ds["periods"])
         payload["period_grains"] = grains
         payload["period_grain_options"] = [{"id": g, "label": GRAIN_LABELS[g]} for g in GRAINS]
@@ -691,18 +703,25 @@ async def hsp_executive_view(
     ds = await active_dataset("hsp")
     default_base, default_latest = default_periods(ds)
     type_ = ds["types"][-1]
-    b = base or default_base
-    l = latest or default_latest
-    if b not in ds["periods"] or l not in ds["periods"]:
-        raise HTTPException(status_code=400, detail="Unknown period")
-    _, _, rows, _, rng = await compute("hsp", type_, b, l, member)
     data = await load_facts(ds)
+    entry = data.get(type_) or data.get("All") or {"facts": {}, "units": []}
+    if any(parse_month_period(p) for p in (ds.get("periods") or [])):
+        facts_hsp, periods_hsp = aggregate_hsp_facts(entry["facts"], "monthly")
+        data_view = {type_: {"facts": facts_hsp, "units": entry["units"]}}
+    else:
+        facts_hsp, periods_hsp = entry["facts"], list(ds["periods"])
+        data_view = data
+    b = base or (periods_hsp[-2] if len(periods_hsp) >= 2 else (periods_hsp[0] if periods_hsp else default_base))
+    l = latest or (periods_hsp[-1] if periods_hsp else default_latest)
+    if b not in periods_hsp or l not in periods_hsp:
+        raise HTTPException(status_code=400, detail="Unknown period")
+    _, _, rows, _, rng = await compute("hsp", type_, b, l, member, grain="monthly")
     return {
         "as_of": ds["uploaded_at"],
         "scope_range": rng,
         "types": ds["types"],
-        "periods": ds["periods"],
-        "executive": hsp_executive(data, rows, ds["periods"], b, l, type_),
+        "periods": periods_hsp,
+        "executive": hsp_executive(data_view, rows, periods_hsp, b, l, type_),
     }
 
 
@@ -713,19 +732,28 @@ async def hsp_detailed_view(
     latest: str = Query(None),
     range: str = Query("All"),
     category: str = Query("All"),
+    grain: str = Query("monthly"),
     member: dict = Depends(viewer),
 ):
     """Detailed Dashboard KPIs/charts for HSP → Overview tab."""
     ds = await active_dataset("hsp")
     default_base, default_latest = default_periods(ds)
     type_ = ds["types"][-1]
-    b = base or default_base
-    l = latest or default_latest
-    if b not in ds["periods"] or l not in ds["periods"]:
-        raise HTTPException(status_code=400, detail="Unknown period")
     data = await load_facts(ds)
     policy = await get_policy()
-    entry = data.get(type_) or data.get("All") or {"units": []}
+    entry = data.get(type_) or data.get("All") or {"facts": {}, "units": []}
+    grain_norm = normalize_grain(grain)
+    if any(parse_month_period(p) for p in (ds.get("periods") or [])):
+        facts_hsp, periods_hsp = aggregate_hsp_facts(entry["facts"], grain_norm)
+        data_view = {type_: {"facts": facts_hsp, "units": entry["units"]}}
+    else:
+        facts_hsp, periods_hsp = entry["facts"], list(ds["periods"])
+        data_view = data
+        grain_norm = "monthly"
+    b = base or (periods_hsp[-2] if len(periods_hsp) >= 2 else (periods_hsp[0] if periods_hsp else default_base))
+    l = latest or (periods_hsp[-1] if periods_hsp else default_latest)
+    if b not in periods_hsp or l not in periods_hsp:
+        raise HTTPException(status_code=400, detail="Unknown period")
     unit_names = sorted({u for u, _ in entry.get("units") or []})
     if not unit_names:
         raise HTTPException(status_code=404, detail="No units in HSP dataset")
@@ -733,14 +761,15 @@ async def hsp_detailed_view(
     range_param = range if range not in (None, "") else "All"
     cat_param = category if category not in (None, "") else "All"
     detailed = hsp_detailed(
-        data, ds["periods"], policy, unit_param, type_, b, l, range_param, cat_param,
+        data_view, periods_hsp, policy, unit_param, type_, b, l, range_param, cat_param,
     )
     rng = scope_range(member)
     return {
         "as_of": ds["uploaded_at"],
         "scope_range": rng,
         "types": ds["types"],
-        "periods": ds["periods"],
+        "periods": periods_hsp,
+        "period_grain": grain_norm,
         "detailed": detailed,
     }
 
@@ -794,9 +823,25 @@ async def overview(member: dict = Depends(viewer)):
             payload["periods"] = ds["periods"]
         elif domain == "hsp":
             data = await load_facts(ds)
-            payload["executive"] = hsp_executive(data, rows, ds["periods"], b, l, type_)
+            entry = data.get(type_) or data.get("All") or {"facts": {}, "units": []}
+            if any(parse_month_period(p) for p in (ds.get("periods") or [])):
+                facts_hsp, periods_hsp = aggregate_hsp_facts(entry["facts"], "monthly")
+                data_view = {type_: {"facts": facts_hsp, "units": entry["units"]}}
+                # Align overview window to monthly defaults when dataset is monthly
+                if periods_hsp:
+                    b = periods_hsp[-2] if len(periods_hsp) >= 2 else periods_hsp[0]
+                    l = periods_hsp[-1]
+                    payload["base"], payload["latest"] = b, l
+                    _, _, rows, _, _ = await compute(domain, type_, b, l, member, grain="monthly")
+                    payload["totals"] = totals(domain, rows)
+                    scored = sorted([r for r in rows if r["rank"]], key=lambda r: r["rank"])
+                    payload["top"], payload["bottom"] = scored[:5], scored[-5:][::-1]
+            else:
+                facts_hsp, periods_hsp = entry["facts"], list(ds["periods"])
+                data_view = data
+            payload["executive"] = hsp_executive(data_view, rows, periods_hsp, b, l, type_)
             payload["types"] = ds["types"]
-            payload["periods"] = ds["periods"]
+            payload["periods"] = periods_hsp
         out[domain] = payload
     return out
 

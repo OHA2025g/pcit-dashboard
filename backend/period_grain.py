@@ -194,7 +194,7 @@ def aggregate_112_facts(facts: dict, grain: str):
 
 
 def grain_meta_payload(monthly_periods: list) -> dict:
-    """Build period_grains block for /meta (emergency112)."""
+    """Build period_grains block for /meta (emergency112 / hsp)."""
     out = {}
     for g in GRAINS:
         periods = list_grain_periods(monthly_periods, g)
@@ -206,3 +206,84 @@ def grain_meta_payload(monthly_periods: list) -> dict:
             "default_latest": l,
         }
     return out
+
+
+def _merge_hsp_month_facts(items: list) -> dict:
+    accidents = sum(float(f.get("accidents") if f.get("accidents") is not None else f.get("den") or 0) for f in items)
+    killed = sum(float(f.get("killed") if f.get("killed") is not None else f.get("num") or 0) for f in items)
+    injured = sum(float(f.get("injured") if f.get("injured") is not None else f.get("beyond") or 0) for f in items)
+    return {
+        "den": accidents,
+        "num": killed,
+        "beyond": injured,
+        "accidents": accidents,
+        "killed": killed,
+        "injured": injured,
+    }
+
+
+def aggregate_hsp_facts(facts: dict, grain: str):
+    """
+    Aggregate monthly HSP {(unit, period): fact} into the requested grain.
+
+    Returns (new_facts, periods). Monthly labels must be parseable as 'Mon YYYY'.
+    """
+    grain = normalize_grain(grain)
+    if grain == "monthly":
+        periods = list_grain_periods([p for (_, p) in facts.keys()], "monthly")
+        out = {}
+        for (unit, period), fact in facts.items():
+            ym = parse_month_period(period)
+            if not ym:
+                continue
+            label = f"{MONTH_ABBR[ym[1]]} {ym[0]}"
+            out[(unit, label)] = {
+                **fact,
+                "period": label,
+                "den": fact.get("accidents") if fact.get("accidents") is not None else fact.get("den"),
+                "num": fact.get("killed") if fact.get("killed") is not None else fact.get("num"),
+                "beyond": fact.get("injured") if fact.get("injured") is not None else fact.get("beyond"),
+            }
+        return out, periods
+
+    by_unit = {}
+    meta = {}
+    for (unit, period), fact in facts.items():
+        ym = parse_month_period(period)
+        if not ym:
+            continue
+        by_unit.setdefault(unit, []).append((ym[0], ym[1], fact))
+        meta.setdefault(unit, {
+            "unit": unit,
+            "range": fact.get("range") or "",
+            "type": fact.get("type") or "All",
+        })
+
+    periods = list_grain_periods(
+        [f"{MONTH_ABBR[m]} {y}" for items in by_unit.values() for y, m, _ in items],
+        grain,
+    )
+    out = {}
+
+    if grain == "ytd":
+        for unit, items in by_unit.items():
+            items_sorted = sorted(items, key=lambda x: (x[0], x[1]))
+            for y, m, _ in items_sorted:
+                label, _ = _bucket(y, m, "ytd")
+                window = [f for yy, mm, f in items_sorted if yy == y and mm <= m]
+                if not window:
+                    continue
+                merged = _merge_hsp_month_facts(window)
+                out[(unit, label)] = {**meta[unit], "period": label, **merged}
+        return out, periods
+
+    for unit, items in by_unit.items():
+        buckets = {}
+        for y, m, fact in items:
+            label, _ = _bucket(y, m, grain)
+            buckets.setdefault(label, []).append(fact)
+        for label, window in buckets.items():
+            merged = _merge_hsp_month_facts(window)
+            out[(unit, label)] = {**meta[unit], "period": label, **merged}
+
+    return out, periods

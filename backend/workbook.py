@@ -281,10 +281,14 @@ def parse_antf(wb, rows=None) -> dict:
 
 
 def parse_hsp(wb, rows=None) -> dict:
-    """HSP Quaterly sheet — accidents, killed, injured by unit and quarter."""
-    sheet = "Quaterly" if "Quaterly" in wb.sheetnames else ("Master sheet" if "Master sheet" in wb.sheetnames else None)
-    if sheet is None:
-        raise WorkbookError("Sheet 'Quaterly' not found")
+    """HSP facts — prefer Master sheet monthly Date rows; fall back to Quaterly."""
+    # Master sheet has Year/Month/Date monthly rows; Quaterly is pre-aggregated quarters
+    if "Master sheet" in wb.sheetnames:
+        sheet = "Master sheet"
+    elif "Quaterly" in wb.sheetnames:
+        sheet = "Quaterly"
+    else:
+        raise WorkbookError("Sheet 'Master sheet' or 'Quaterly' not found")
     rows = list(rows) if rows is not None else list(wb[sheet].iter_rows(values_only=True))
     if len(rows) < 2:
         raise WorkbookError(f"{sheet} sheet is empty")
@@ -292,9 +296,9 @@ def parse_hsp(wb, rows=None) -> dict:
     if "total accident" not in header or "total killed" not in header:
         raise WorkbookError(f"{sheet} does not look like HSP accident/killed data")
     # Quaterly: Sr, Unit, Quarter, Accident, Killed, Injured, ...
-    # Master sheet: Sr, Unit, Year, Month, Accident, Killed, Injured, ..., Quarter
+    # Master sheet: Sr, Unit, Year, Month, Accident, Killed, Injured, Date, ..., Quarter
     is_master = sheet == "Master sheet"
-    facts_map = {}  # (unit, period) -> aggregates (dedupe / sum months)
+    facts_map = {}  # (unit, period) -> fact
     period_order, units_seen, issues = [], [], []
     for i, r in enumerate(rows[1:], start=2):
         if not r or r[1] in (None, ""):
@@ -302,7 +306,8 @@ def parse_hsp(wb, rows=None) -> dict:
         unit = _normalize_hsp_unit(r[1])
         try:
             if is_master:
-                period = str(r[12] or "").strip()
+                # Prefer Year+Month; Date column is the monthly anchor
+                period = _period_label(r[3], r[2])
                 accidents, killed, injured = _num(r[4]), _num(r[5]), _num(r[6])
             else:
                 period = str(r[2] or "").strip()
@@ -311,19 +316,11 @@ def parse_hsp(wb, rows=None) -> dict:
             issues.append(f"Row {i} {unit}: {exc}")
             continue
         if not period:
-            issues.append(f"Row {i} {unit}: missing quarter")
+            issues.append(f"Row {i} {unit}: missing period")
             continue
         key = (unit, period)
         if key in facts_map:
-            # Quaterly has duplicate identical rows — keep first; Master sums months
-            if is_master:
-                prev = facts_map[key]
-                prev["den"] += accidents
-                prev["num"] += killed
-                prev["beyond"] += injured
-                prev["accidents"] += accidents
-                prev["killed"] += killed
-                prev["injured"] += injured
+            # Duplicate rows — keep first (Master is one row per unit-month)
             continue
         facts_map[key] = {
             "unit": unit, "range": "", "type": "All", "period": period,
@@ -335,19 +332,24 @@ def parse_hsp(wb, rows=None) -> dict:
         if unit not in units_seen:
             units_seen.append(unit)
     if not facts_map:
-        raise WorkbookError("No unit rows found on HSP Quaterly sheet")
+        raise WorkbookError(f"No unit rows found on HSP {sheet} sheet")
     if len(period_order) < 2:
-        raise WorkbookError("At least two quarters are required")
-    # Chronological order for quarter labels
+        raise WorkbookError("At least two reporting periods are required")
+
+    # Chronological order: monthly "Jan 2025" or quarterly "Jan-Mar 2025"
+    _month_ord = {m: i for i, m in enumerate(MONTH_ABBR[1:], 1)}
     _qord = {"Jan-Mar": 0, "Apr-Jun": 1, "Jul-Sep": 2, "Oct-Dec": 3}
 
     def _pkey(p):
         parts = str(p).split()
+        if len(parts) == 2 and parts[0] in _month_ord and parts[1].isdigit():
+            return (int(parts[1]), _month_ord[parts[0]])
         if len(parts) == 2 and parts[0] in _qord and parts[1].isdigit():
             return (int(parts[1]), _qord[parts[0]])
         return (0, 0, p)
 
     period_order = sorted(period_order, key=_pkey)
+
     return {
         "domain": "hsp",
         "periods": period_order,

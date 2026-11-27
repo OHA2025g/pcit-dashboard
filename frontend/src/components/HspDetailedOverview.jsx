@@ -71,6 +71,7 @@ const initialFilters = (m) => ({
   latest: m.default_latest,
   range: [],
   category: "All",
+  period_grain: m.default_period_grain || "monthly",
 });
 
 export default function HspDetailedOverview() {
@@ -101,6 +102,7 @@ export default function HspDetailedOverview() {
       latest: f.latest,
       range: filterParam(f.range),
       category: f.category || "All",
+      grain: f.period_grain || "monthly",
     };
     Promise.all([
       api("get", "/hsp/detailed", { params: filterParams }),
@@ -231,7 +233,7 @@ export default function HspDetailedOverview() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
               <Panel
-                title={<OverviewChartTitle title={isAll ? "Statewide accidents by quarter" : "Unit accidents by quarter"} explainId="volumes" testId="hsp-det-chart-accidents-info" />}
+                title={<OverviewChartTitle title={isAll ? "Statewide accidents by period" : "Unit accidents by period"} explainId="volumes" testId="hsp-det-chart-accidents-info" />}
                 subtitle="Quarterly accident counts"
                 testId="hsp-det-chart-accidents"
               >
@@ -269,7 +271,7 @@ export default function HspDetailedOverview() {
               </Panel>
 
               <Panel
-                title={<OverviewChartTitle title="Unit outcomes in the selected quarters" explainId="comparison" testId="hsp-det-chart-compare-info" />}
+                title={<OverviewChartTitle title="Unit outcomes in the selected periods" explainId="comparison" testId="hsp-det-chart-compare-info" />}
                 subtitle="Base vs latest counts"
                 testId="hsp-det-chart-compare"
               >
@@ -290,7 +292,7 @@ export default function HspDetailedOverview() {
               </Panel>
 
               <Panel
-                title={<OverviewChartTitle title="Reductions from base quarter (%)" explainId="beyond" testId="hsp-det-chart-reductions-info" />}
+                title={<OverviewChartTitle title="Reductions from base period (%)" explainId="beyond" testId="hsp-det-chart-reductions-info" />}
                 subtitle="Positive percentages indicate reductions"
                 testId="hsp-det-chart-reductions"
               >

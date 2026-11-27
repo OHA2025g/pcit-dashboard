@@ -57,7 +57,7 @@ export default function DomainDashboard({ domain }) {
       unit: filterParam(f.unit),
       range: filterParam(f.range),
     };
-    if (domain === "emergency112") params.grain = f.period_grain || "monthly";
+    if (domain === "emergency112" || domain === "hsp") params.grain = f.period_grain || "monthly";
     api("get", "/dashboard", { params }).then(setData).catch((e) => setError(errMsg(e)));
   }, [api, domain, f]);
   useEffect(load, [load]);
@@ -70,7 +70,7 @@ export default function DomainDashboard({ domain }) {
     "Latest period": f.latest,
     Range: filterLabel(f.range),
     "Rank category": f.category,
-    ...(domain === "emergency112" ? { "Period view": f.period_grain || "monthly" } : {}),
+    ...((domain === "emergency112" || domain === "hsp") ? { "Period view": f.period_grain || "monthly" } : {}),
     ...(meta?.scope_range ? { "Access scope": meta.scope_range } : {}),
   }), [f, meta, domain]);
 

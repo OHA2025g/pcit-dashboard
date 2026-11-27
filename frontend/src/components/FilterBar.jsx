@@ -134,7 +134,8 @@ export default function FilterBar({
   const upd = (k) => (v) => set((p) => ({ ...p, [k]: v }));
   const simple = meta.domain === "emergency112" || meta.domain === "training" || meta.domain === "antf" || meta.domain === "hsp";
   const snapshot = meta.domain === "antf";
-  const hasPeriodGrain = meta.domain === "emergency112" && Array.isArray(meta.period_grain_options) && meta.period_grain_options.length > 0;
+  const hasPeriodGrain = (meta.domain === "emergency112" || meta.domain === "hsp")
+    && Array.isArray(meta.period_grain_options) && meta.period_grain_options.length > 0;
   const grainId = f.period_grain || meta.default_period_grain || "monthly";
   const grainMeta = hasPeriodGrain ? (meta.period_grains?.[grainId] || null) : null;
   const periods = grainMeta?.periods || meta.periods || [];
