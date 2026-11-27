@@ -116,6 +116,15 @@ export default function HspDetailedOverview() {
       .then(([res, dash]) => {
         setPayload(res);
         setDashRows(dash?.rows || []);
+        if (res?.period_grain_options?.length) {
+          setMeta((m) => (m ? {
+            ...m,
+            period_grains: res.period_grains || m.period_grains,
+            period_grain_options: res.period_grain_options,
+            default_period_grain: res.default_period_grain || res.period_grain || m.default_period_grain || "monthly",
+            periods: res.periods || m.periods,
+          } : m));
+        }
         setLoading(false);
       })
       .catch((e) => { setError(errMsg(e)); setLoading(false); });

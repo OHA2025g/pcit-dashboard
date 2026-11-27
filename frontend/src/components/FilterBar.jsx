@@ -285,9 +285,6 @@ export default function FilterBar({
       data-testid={testId}
     >
       <div className={`grid ${grid} gap-3 items-end`}>
-        {!simple && <Field label="Case type" value={f.type} onChange={upd("type")} options={meta.types} testId="filter-type" />}
-        {rangeField}
-        {unitField}
         {hasPeriodGrain && (
           <Field
             label="Period view"
@@ -297,6 +294,9 @@ export default function FilterBar({
             testId="filter-period-grain"
           />
         )}
+        {!simple && <Field label="Case type" value={f.type} onChange={upd("type")} options={meta.types} testId="filter-type" />}
+        {rangeField}
+        {unitField}
         {!snapshot && (
           <>
             <Field

@@ -361,14 +361,14 @@ async def meta(domain: str, member: dict = Depends(viewer)):
         "default_base": b, "default_latest": l, "scope_range": rng,
         "dataset": {k: ds[k] for k in ("id", "filename", "source", "uploaded_at", "uploaded_by", "record_count", "unit_count")},
     }
-    if domain in ("emergency112", "hsp") and any(parse_month_period(p) for p in (ds.get("periods") or [])):
+    if domain in ("emergency112", "hsp"):
         grains = grain_meta_payload(ds["periods"])
         payload["period_grains"] = grains
         payload["period_grain_options"] = [{"id": g, "label": GRAIN_LABELS[g]} for g in GRAINS]
         payload["default_period_grain"] = "monthly"
-        # Keep top-level periods aligned with default monthly grain
+        # Prefer monthly grain defaults when Master-sheet months are present
         monthly = grains.get("monthly") or {}
-        if monthly.get("periods"):
+        if monthly.get("periods") and any(parse_month_period(p) for p in (ds.get("periods") or [])):
             payload["periods"] = monthly["periods"]
             payload["default_base"] = monthly.get("default_base") or b
             payload["default_latest"] = monthly.get("default_latest") or l
@@ -731,11 +731,10 @@ async def hsp_executive_view(
         "types": ds["types"],
         "periods": periods_hsp,
         "period_grain": grain_norm,
+        "period_grains": grain_meta_payload(ds["periods"]),
+        "period_grain_options": [{"id": g, "label": GRAIN_LABELS[g]} for g in GRAINS],
         "executive": hsp_executive(data_view, rows, periods_hsp, b, l, type_),
     }
-    if monthly_source:
-        out["period_grains"] = grain_meta_payload(ds["periods"])
-        out["period_grain_options"] = [{"id": g, "label": GRAIN_LABELS[g]} for g in GRAINS]
     return out
 
 
@@ -778,14 +777,18 @@ async def hsp_detailed_view(
         data_view, periods_hsp, policy, unit_param, type_, b, l, range_param, cat_param,
     )
     rng = scope_range(member)
-    return {
+    out = {
         "as_of": ds["uploaded_at"],
         "scope_range": rng,
         "types": ds["types"],
         "periods": periods_hsp,
         "period_grain": grain_norm,
+        "period_grains": grain_meta_payload(ds["periods"]),
+        "period_grain_options": [{"id": g, "label": GRAIN_LABELS[g]} for g in GRAINS],
+        "default_period_grain": "monthly" if any(parse_month_period(p) for p in (ds.get("periods") or [])) else grain_norm,
         "detailed": detailed,
     }
+    return out
 
 
 @api_router.get("/overview")
@@ -856,6 +859,9 @@ async def overview(member: dict = Depends(viewer)):
             payload["executive"] = hsp_executive(data_view, rows, periods_hsp, b, l, type_)
             payload["types"] = ds["types"]
             payload["periods"] = periods_hsp
+            payload["period_grain"] = "monthly"
+            payload["period_grains"] = grain_meta_payload(ds["periods"])
+            payload["period_grain_options"] = [{"id": g, "label": GRAIN_LABELS[g]} for g in GRAINS]
         out[domain] = payload
     return out
 

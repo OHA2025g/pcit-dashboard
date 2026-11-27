@@ -72,13 +72,16 @@ const FilterField = ({ label, value, onChange, options, testId, disabledOptions 
 export default function HspExecutiveOverview({ d: initial }) {
   const api = useApi();
   const seed = initial?.executive;
-  const [grain, setGrain] = useState("monthly");
+  const [grain, setGrain] = useState(initial?.period_grain || "monthly");
   const [base, setBase] = useState(seed?.base || initial?.base || "");
   const [latest, setLatest] = useState(seed?.latest || initial?.latest || "");
   const [payload, setPayload] = useState(initial?.executive ? {
     as_of: initial.as_of,
     executive: initial.executive,
     periods: initial.periods || [],
+    period_grain: initial.period_grain || "monthly",
+    period_grains: initial.period_grains || null,
+    period_grain_options: initial.period_grain_options || null,
   } : null);
   const [loading, setLoading] = useState(!initial?.executive);
   const [error, setError] = useState(null);
