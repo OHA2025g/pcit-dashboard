@@ -34,10 +34,7 @@ try:
         timeliness_executive, timeliness_detailed, emergency112_executive, emergency112_detailed,
         hsp_executive, hsp_detailed,
     )
-    from backend.workbook import (
-        parse_workbook, WorkbookError, _normalize_range,
-        promote_commissionerates_in_facts, is_commissionerate_unit,
-    )
+    from backend.workbook import parse_workbook, WorkbookError, _normalize_range
     from backend.emailer import send_email
     from backend.reports import build_section, render_pdf, render_email, render_explain_email
     from backend.period_grain import (
@@ -53,10 +50,7 @@ except ModuleNotFoundError:
         timeliness_executive, timeliness_detailed, emergency112_executive, emergency112_detailed,
         hsp_executive, hsp_detailed,
     )
-    from workbook import (
-        parse_workbook, WorkbookError, _normalize_range,
-        promote_commissionerates_in_facts, is_commissionerate_unit,
-    )
+    from workbook import parse_workbook, WorkbookError, _normalize_range
     from period_grain import (
         GRAINS, GRAIN_LABELS, normalize_grain, aggregate_112_facts, grain_meta_payload,
     )
@@ -200,24 +194,20 @@ async def _conviction_range_by_unit() -> dict:
         cds = await active_dataset("conviction")
     except HTTPException:
         return {}
-    data = await load_facts(cds)
-    entry = next(iter(data.values()), None)
+    if cds["id"] not in _cache:
+        facts = await db.facts.find({"dataset_id": cds["id"]}, {"_id": 0}).to_list(20000)
+        by_type: dict = {}
+        for f in facts:
+            f = {**f, "range": _normalize_range(f.get("range", ""))}
+            t = by_type.setdefault(f["type"], {"facts": {}, "units": []})
+            if (f["unit"], f["range"]) not in t["units"]:
+                t["units"].append((f["unit"], f["range"]))
+            t["facts"][(f["unit"], f["period"])] = f
+        _cache[cds["id"]] = by_type
+    entry = next(iter(_cache[cds["id"]].values()), None)
     if not entry:
         return {}
     return {_norm_unit(u): r for u, r in entry["units"] if r}
-
-
-async def _conviction_commissionerate_names() -> set[str]:
-    """Unit names that are range-level commissionerates in the conviction dataset."""
-    try:
-        cds = await active_dataset("conviction")
-    except HTTPException:
-        return set()
-    data = await load_facts(cds)
-    entry = next(iter(data.values()), None)
-    if not entry:
-        return set()
-    return {u for u, r in entry["units"] if is_commissionerate_unit(u, r)}
 
 
 async def _attach_ranges_from_conviction(by_type: dict, unit_map: dict) -> None:
@@ -268,11 +258,6 @@ async def load_facts(ds: dict) -> dict:
         await _attach_ranges_from_conviction(by_type, UNIT_MAP_HSP)
     elif domain == "emergency112":
         await _attach_ranges_from_conviction(by_type, UNIT_MAP_112)
-    # Commissionerates belong in the Range filter (each as its own range), not Unit
-    extra = set()
-    if domain in ("hsp", "emergency112"):
-        extra = await _conviction_commissionerate_names()
-    promote_commissionerates_in_facts(by_type, extra_commissionerate_names=extra)
     return by_type
 
 
@@ -350,14 +335,10 @@ async def meta(domain: str, member: dict = Depends(viewer)):
     data = await load_facts(ds)
     rng = scope_range(member)
     first = data[ds["types"][0]]["units"]
-    # Commissionerates are range-level (unit == range after promote) — keep them out of Unit filter
-    units = [
-        u for u, r in first
-        if (not rng or r == rng) and not is_commissionerate_unit(u, r)
-    ]
+    units = [u for u, r in first if not rng or r == rng]
     unit_set = set(units)
     unit_ranges = {u: r for u, r in first if (not rng or r == rng) and u in unit_set}
-    ranges = sorted({r for _, r in first if (not rng or r == rng) and r})
+    ranges = sorted({r for _, r in first if not rng or r == rng})
     b, l = default_periods(ds)
     cats = categories_for(domain)
     if domain in ("emergency112", "training", "antf", "hsp"):
