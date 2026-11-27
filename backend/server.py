@@ -628,27 +628,32 @@ async def timeliness_detailed_view(
 async def emergency112_executive_view(
     base: str = Query(None),
     latest: str = Query(None),
+    grain: str = Query("monthly"),
     member: dict = Depends(viewer),
 ):
     """Executive Dashboard KPIs/charts for Overview → 112."""
     ds = await active_dataset("emergency112")
     default_base, default_latest = default_periods(ds)
     type_ = ds["types"][-1]
-    b = base or default_base
-    l = latest or default_latest
-    _, _, rows, _, rng = await compute("emergency112", type_, b, l, member, grain="monthly")
+    grain_norm = normalize_grain(grain)
     data = await load_facts(ds)
     entry = data.get(type_) or data.get("All") or {"facts": {}, "units": []}
-    facts112, periods112 = aggregate_112_facts(entry["facts"], "monthly")
+    facts112, periods112 = aggregate_112_facts(entry["facts"], grain_norm)
+    b = base or (periods112[-2] if len(periods112) >= 2 else (periods112[0] if periods112 else default_base))
+    l = latest or (periods112[-1] if periods112 else default_latest)
     if b not in periods112 or l not in periods112:
         raise HTTPException(status_code=400, detail="Unknown period")
-    data_monthly = {type_: {"facts": facts112, "units": entry["units"]}}
+    _, _, rows, _, rng = await compute("emergency112", type_, b, l, member, grain=grain_norm)
+    data_view = {type_: {"facts": facts112, "units": entry["units"]}}
     return {
         "as_of": ds["uploaded_at"],
         "scope_range": rng,
         "types": ds["types"],
         "periods": periods112,
-        "executive": emergency112_executive(data_monthly, rows, periods112, b, l, type_),
+        "period_grain": grain_norm,
+        "period_grains": grain_meta_payload(ds["periods"]),
+        "period_grain_options": [{"id": g, "label": GRAIN_LABELS[g]} for g in GRAINS],
+        "executive": emergency112_executive(data_view, rows, periods112, b, l, type_),
     }
 
 
@@ -697,6 +702,7 @@ async def emergency112_detailed_view(
 async def hsp_executive_view(
     base: str = Query(None),
     latest: str = Query(None),
+    grain: str = Query("monthly"),
     member: dict = Depends(viewer),
 ):
     """Executive Dashboard KPIs/charts for Overview → HSP."""
@@ -705,24 +711,32 @@ async def hsp_executive_view(
     type_ = ds["types"][-1]
     data = await load_facts(ds)
     entry = data.get(type_) or data.get("All") or {"facts": {}, "units": []}
-    if any(parse_month_period(p) for p in (ds.get("periods") or [])):
-        facts_hsp, periods_hsp = aggregate_hsp_facts(entry["facts"], "monthly")
+    grain_norm = normalize_grain(grain)
+    monthly_source = any(parse_month_period(p) for p in (ds.get("periods") or []))
+    if monthly_source:
+        facts_hsp, periods_hsp = aggregate_hsp_facts(entry["facts"], grain_norm)
         data_view = {type_: {"facts": facts_hsp, "units": entry["units"]}}
     else:
         facts_hsp, periods_hsp = entry["facts"], list(ds["periods"])
         data_view = data
+        grain_norm = "monthly"
     b = base or (periods_hsp[-2] if len(periods_hsp) >= 2 else (periods_hsp[0] if periods_hsp else default_base))
     l = latest or (periods_hsp[-1] if periods_hsp else default_latest)
     if b not in periods_hsp or l not in periods_hsp:
         raise HTTPException(status_code=400, detail="Unknown period")
-    _, _, rows, _, rng = await compute("hsp", type_, b, l, member, grain="monthly")
-    return {
+    _, _, rows, _, rng = await compute("hsp", type_, b, l, member, grain=grain_norm)
+    out = {
         "as_of": ds["uploaded_at"],
         "scope_range": rng,
         "types": ds["types"],
         "periods": periods_hsp,
+        "period_grain": grain_norm,
         "executive": hsp_executive(data_view, rows, periods_hsp, b, l, type_),
     }
+    if monthly_source:
+        out["period_grains"] = grain_meta_payload(ds["periods"])
+        out["period_grain_options"] = [{"id": g, "label": GRAIN_LABELS[g]} for g in GRAINS]
+    return out
 
 
 @api_router.get("/hsp/detailed")

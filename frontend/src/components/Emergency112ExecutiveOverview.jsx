@@ -62,6 +62,7 @@ const FilterField = ({ label, value, onChange, options, testId, disabledOptions 
 export default function Emergency112ExecutiveOverview({ d: initial }) {
   const api = useApi();
   const seed = initial?.executive;
+  const [grain, setGrain] = useState("monthly");
   const [base, setBase] = useState(seed?.base || initial?.base || "");
   const [latest, setLatest] = useState(seed?.latest || initial?.latest || "");
   const [payload, setPayload] = useState(initial?.executive ? {
@@ -76,7 +77,7 @@ export default function Emergency112ExecutiveOverview({ d: initial }) {
     if (!base || !latest) return;
     setLoading(true);
     setError(null);
-    api("get", "/emergency112/executive", { params: { base, latest } })
+    api("get", "/emergency112/executive", { params: { base, latest, grain } })
       .then((res) => {
         setPayload(res);
         setLoading(false);
@@ -85,15 +86,16 @@ export default function Emergency112ExecutiveOverview({ d: initial }) {
         setError(errMsg(e));
         setLoading(false);
       });
-  }, [api, base, latest]);
+  }, [api, base, latest, grain]);
 
   useEffect(() => {
     if ((!base || !latest) && !payload?.periods?.length) {
-      api("get", "/emergency112/executive")
+      api("get", "/emergency112/executive", { params: { grain } })
         .then((res) => {
           setPayload(res);
           setBase(res.executive?.base || "");
           setLatest(res.executive?.latest || "");
+          if (res.period_grain) setGrain(res.period_grain);
           setLoading(false);
         })
         .catch((e) => { setError(errMsg(e)); setLoading(false); });
@@ -104,10 +106,22 @@ export default function Emergency112ExecutiveOverview({ d: initial }) {
 
   const periods = useMemo(() => payload?.periods || initial?.periods || [], [payload, initial]);
   const periodOptions = useMemo(() => periods.map((p) => ({ value: p, label: p })), [periods]);
+  const grainOptions = useMemo(
+    () => (payload?.period_grain_options || []).map((o) => ({ value: o.id, label: o.label })),
+    [payload],
+  );
   const latestDisabled = useMemo(() => periodsAtOrBefore(periods, base), [periods, base]);
   const onBaseChange = (v) => {
     setBase(v);
     setLatest((cur) => clampLatestToBase(periods, v, cur));
+  };
+  const onGrainChange = (nextGrain) => {
+    const next = payload?.period_grains?.[nextGrain];
+    setGrain(nextGrain);
+    if (next?.periods?.length) {
+      setBase(next.default_base || next.periods[Math.max(0, next.periods.length - 2)]);
+      setLatest(next.default_latest || next.periods[next.periods.length - 1]);
+    }
   };
 
   const ex = payload?.executive;
@@ -156,15 +170,24 @@ export default function Emergency112ExecutiveOverview({ d: initial }) {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 surface-panel rounded-sm p-3" data-testid="ov-112-exec-filters">
+        {grainOptions.length > 0 && (
+          <FilterField
+            label="Period view"
+            value={grain}
+            onChange={onGrainChange}
+            options={grainOptions}
+            testId="ov-112-filter-period-grain"
+          />
+        )}
         <FilterField
-          label="Base month"
+          label="Base period"
           value={base}
           onChange={onBaseChange}
           options={periodOptions}
           testId="ov-112-filter-base"
         />
         <FilterField
-          label="Latest month"
+          label="Latest period"
           value={latest}
           onChange={setLatest}
           options={periodOptions}
@@ -175,12 +198,6 @@ export default function Emergency112ExecutiveOverview({ d: initial }) {
           <div className="text-[10px] uppercase tracking-[0.14em] font-semibold text-slate-500 mb-1.5">Coverage</div>
           <div className="h-9 flex items-center px-3 rounded-sm border border-slate-200 bg-slate-50 text-sm font-num text-slate-800" data-testid="ov-112-filter-coverage">
             {ex.unit_count} police units
-          </div>
-        </div>
-        <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-[0.14em] font-semibold text-slate-500 mb-1.5">Records through</div>
-          <div className="h-9 flex items-center px-3 rounded-sm border border-slate-200 bg-slate-50 text-sm font-num text-slate-800">
-            {ex.latest}
           </div>
         </div>
       </div>
