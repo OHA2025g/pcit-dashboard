@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ReferenceLine,
+  Tooltip, Legend,
 } from "recharts";
 import { Panel, Kpi, Delta, CategoryBadge } from "@/components/Primitives";
 import ChartExplainButton from "@/components/ChartExplainButton";
@@ -37,7 +37,6 @@ const EXEC = {
   lateState: "#D97706",
   grid: "#E8EEF2",
   tick: "#475569",
-  remaining: "#CBD5E1",
 };
 
 function shortPeriod(p) {
@@ -143,7 +142,6 @@ export default function TimelinessDetailedOverview() {
   })();
   const comparison = d?.comparison || [];
   const topScores = d?.top_scores || [];
-  const scorePoints = d?.score_points || [];
   const rateLineName = isAll ? "All units" : isSingle ? "Selected unit" : "Selected units";
   const rangesSelected = Array.isArray(f.range) ? f.range : [];
 
@@ -375,44 +373,6 @@ export default function TimelinessDetailedOverview() {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-              </Panel>
-
-              <Panel
-                title={
-                  <OverviewChartTitle
-                    title="Points earned toward the overall score"
-                    explainId="points"
-                    testId="tim-det-chart-points-info"
-                  />
-                }
-                subtitle={isSingle ? "Performance and improvement contributions" : "Select exactly one unit to see score contributions"}
-                testId="tim-det-chart-points"
-              >
-                <div className="h-56">
-                  {!isSingle ? (
-                    <div className="h-full flex items-center justify-center text-sm text-slate-500 px-6 text-center">
-                      Overall score points are unit-specific. Choose a single unit to view earned vs remaining points.
-                    </div>
-                  ) : (
-                    <ResponsiveContainer>
-                      <BarChart data={scorePoints} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                        <CartesianGrid stroke={EXEC.grid} strokeDasharray="3 3" />
-                        <XAxis dataKey="component" tick={{ fill: EXEC.tick, fontSize: 10 }} interval={0} />
-                        <YAxis tick={{ fill: EXEC.tick, fontSize: 11 }} width={42} />
-                        <Tooltip content={<TipBox />} />
-                        <Legend />
-                        <ReferenceLine y={0} stroke={EXEC.tick} />
-                        <Bar dataKey="earned" name="Earned points" stackId="a" fill={EXEC.within} radius={[0, 0, 0, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
-                        <Bar dataKey="remaining" name="Remaining points" stackId="a" fill={EXEC.remaining} radius={[2, 2, 0, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-                {isSingle && (
-                  <p className="text-[11px] text-slate-500 mt-2">
-                    Total earned points {fmt(k.overall_score)} / 100
-                  </p>
-                )}
               </Panel>
             </div>
           </>
