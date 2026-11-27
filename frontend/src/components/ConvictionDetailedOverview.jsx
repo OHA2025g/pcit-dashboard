@@ -11,7 +11,7 @@ import FilterBar from "@/components/FilterBar";
 import ConvictionDashboardPanels from "@/components/ConvictionDashboardPanels";
 import { useApi, errMsg } from "@/lib/api";
 import { fmt, fmtInt, fmtDate } from "@/lib/format";
-import { CHART, TipBox } from "@/lib/chartTheme";
+import { CHART, TipBox, baseLatestLegend } from "@/lib/chartTheme";
 import { resolveOverviewChartExplain } from "@/lib/chartExplain";
 import { fadeUp, staggerFast } from "@/lib/motion";
 
@@ -306,7 +306,12 @@ export default function ConvictionDetailedOverview() {
                       <XAxis dataKey="label" tick={{ fill: EXEC.tick, fontSize: 11 }} />
                       <YAxis tick={{ fill: EXEC.tick, fontSize: 11 }} width={48} />
                       <Tooltip content={<TipBox />} />
-                      <Legend />
+                      <Legend
+                        payload={[
+                          { value: "Trial cases", type: "square", id: "trials", color: EXEC.tertiary },
+                          { value: "Convicted cases", type: "square", id: "convicted", color: EXEC.convicted },
+                        ]}
+                      />
                       <Bar dataKey="trials" name="Trial cases" fill={EXEC.tertiary} radius={[2, 2, 0, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
                       <Bar dataKey="convicted" name="Convicted cases" fill={EXEC.convicted} radius={[2, 2, 0, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
                     </BarChart>
@@ -332,7 +337,7 @@ export default function ConvictionDetailedOverview() {
                       <XAxis type="number" tick={{ fill: EXEC.tick, fontSize: 11 }} unit="%" />
                       <YAxis type="category" dataKey="label" width={110} tick={{ fill: EXEC.tick, fontSize: 10 }} />
                       <Tooltip content={<TipBox unit="%" />} />
-                      <Legend />
+                      <Legend payload={baseLatestLegend(EXEC.secondary, EXEC.primary)} />
                       <Bar dataKey="base_rate" name="Base" fill={EXEC.secondary} radius={[0, 2, 2, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
                       <Bar dataKey="latest_rate" name="Latest" fill={EXEC.primary} radius={[0, 2, 2, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
                     </BarChart>
@@ -384,7 +389,7 @@ export default function ConvictionDetailedOverview() {
                       <XAxis dataKey="type" tick={{ fill: EXEC.tick, fontSize: 11 }} />
                       <YAxis tick={{ fill: EXEC.tick, fontSize: 11 }} unit="%" width={42} />
                       <Tooltip content={<TipBox unit="%" />} />
-                      <Legend />
+                      <Legend payload={baseLatestLegend(EXEC.secondary, EXEC.primary)} />
                       <Bar dataKey="base_rate" name="Base" fill={EXEC.secondary} radius={[2, 2, 0, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
                       <Bar dataKey="latest_rate" name="Latest" fill={EXEC.primary} radius={[2, 2, 0, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
                     </BarChart>

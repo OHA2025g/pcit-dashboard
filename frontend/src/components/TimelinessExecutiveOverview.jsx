@@ -10,7 +10,7 @@ import { Panel, Kpi, Delta } from "@/components/Primitives";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApi, errMsg } from "@/lib/api";
 import { fmt, fmtInt, fmtDate } from "@/lib/format";
-import { CHART, TipBox } from "@/lib/chartTheme";
+import { CHART, TipBox, baseLatestLegend } from "@/lib/chartTheme";
 import { fadeUp, staggerFast } from "@/lib/motion";
 import { clampLatestToBase, periodsAtOrBefore } from "@/lib/periodFilters";
 
@@ -306,7 +306,7 @@ export default function TimelinessExecutiveOverview({ d: initial }) {
                   <XAxis type="number" tick={{ fill: EXEC.tick, fontSize: 11 }} unit="%" />
                   <YAxis type="category" dataKey="label" width={110} tick={{ fill: EXEC.tick, fontSize: 10 }} />
                   <Tooltip content={<TipBox unit="%" />} />
-                  <Legend />
+                  <Legend payload={baseLatestLegend(EXEC.secondary, EXEC.primary)} />
                   <Bar dataKey="base_rate" name="Base" fill={EXEC.secondary} radius={[0, 2, 2, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
                   <Bar dataKey="latest_rate" name="Latest" fill={EXEC.primary} radius={[0, 2, 2, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
                 </BarChart>
@@ -343,7 +343,7 @@ export default function TimelinessExecutiveOverview({ d: initial }) {
                   <XAxis dataKey="type" tick={{ fill: EXEC.tick, fontSize: 11 }} />
                   <YAxis tick={{ fill: EXEC.tick, fontSize: 11 }} unit="%" width={42} />
                   <Tooltip content={<TipBox unit="%" />} />
-                  <Legend />
+                  <Legend payload={baseLatestLegend(EXEC.secondary, EXEC.primary)} />
                   <Bar dataKey="base_rate" name="Base" fill={EXEC.secondary} radius={[2, 2, 0, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
                   <Bar dataKey="latest_rate" name="Latest" fill={EXEC.primary} radius={[2, 2, 0, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
                 </BarChart>

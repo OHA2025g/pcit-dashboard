@@ -11,7 +11,7 @@ import FilterBar from "@/components/FilterBar";
 import ConvictionDashboardPanels from "@/components/ConvictionDashboardPanels";
 import { useApi, errMsg } from "@/lib/api";
 import { fmt, fmtInt, fmtDate } from "@/lib/format";
-import { CHART, TipBox } from "@/lib/chartTheme";
+import { CHART, TipBox, baseLatestLegend } from "@/lib/chartTheme";
 import { resolveOverviewChartExplain } from "@/lib/chartExplain";
 import { fadeUp, staggerFast } from "@/lib/motion";
 
@@ -282,7 +282,7 @@ export default function HspDetailedOverview() {
                       <XAxis dataKey="outcome" tick={{ fill: EXEC.tick, fontSize: 11 }} />
                       <YAxis tick={{ fill: EXEC.tick, fontSize: 11 }} width={48} />
                       <Tooltip content={<TipBox />} />
-                      <Legend />
+                      <Legend payload={baseLatestLegend(EXEC.secondary, EXEC.primary)} />
                       <Bar dataKey="base" name="Base" fill={EXEC.secondary} radius={[2, 2, 0, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
                       <Bar dataKey="latest" name="Latest" fill={EXEC.primary} radius={[2, 2, 0, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
                     </BarChart>

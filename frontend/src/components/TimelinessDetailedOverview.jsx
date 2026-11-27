@@ -11,7 +11,7 @@ import FilterBar from "@/components/FilterBar";
 import ConvictionDashboardPanels from "@/components/ConvictionDashboardPanels";
 import { useApi, errMsg } from "@/lib/api";
 import { fmt, fmtInt, fmtDate } from "@/lib/format";
-import { CHART, TipBox } from "@/lib/chartTheme";
+import { CHART, TipBox, baseLatestLegend } from "@/lib/chartTheme";
 import { resolveOverviewChartExplain } from "@/lib/chartExplain";
 import { fadeUp, staggerFast } from "@/lib/motion";
 
@@ -345,7 +345,7 @@ export default function TimelinessDetailedOverview() {
                       <XAxis type="number" tick={{ fill: EXEC.tick, fontSize: 11 }} unit="%" />
                       <YAxis type="category" dataKey="label" width={110} tick={{ fill: EXEC.tick, fontSize: 10 }} />
                       <Tooltip content={<TipBox unit="%" />} />
-                      <Legend />
+                      <Legend payload={baseLatestLegend(EXEC.secondary, EXEC.primary)} />
                       <Bar dataKey="base_rate" name="Base" fill={EXEC.secondary} radius={[0, 2, 2, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
                       <Bar dataKey="latest_rate" name="Latest" fill={EXEC.primary} radius={[0, 2, 2, 0]} isAnimationActive animationDuration={CHART.animationDuration} />
                     </BarChart>

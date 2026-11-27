@@ -82,7 +82,7 @@ export const tableColumns = (domain, labels) => {
     { key: "latest_rate", label: "Latest rate %" },
     { key: "improvement", label: "Improvement (pp)" },
     ...(domain === "timeliness"
-      ? [{ key: "latest_beyond", label: "Latest beyond-time" }, { key: "base_beyond_rate", label: "Base beyond %" }, { key: "latest_beyond_rate", label: "Latest beyond %" },
+      ? [{ key: "base_beyond_rate", label: "Base beyond %" }, { key: "latest_beyond_rate", label: "Latest beyond %" }, { key: "latest_beyond", label: "Latest beyond-time" },
          { key: "latest_pending", label: "Latest pending" }, { key: "latest_pending_rate", label: "Pending %" }]
       : [{ key: "latest_acquittal_rate", label: "Acquittal %" }, { key: "session_jmfc_gap", label: "Session − JMFC gap (pp)" }]),
     { key: "rank_movement", label: "Rank move" },
