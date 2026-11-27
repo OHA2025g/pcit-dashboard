@@ -101,7 +101,7 @@ export default function HspDetailedOverview() {
       latest: f.latest,
       range: filterParam(f.range),
       category: f.category || "All",
-      grain: f.period_grain || "monthly",
+      grain: f.period_grain || meta?.default_period_grain || "monthly",
     };
     Promise.all([
       api("get", "/hsp/detailed", { params: filterParams }),
@@ -116,19 +116,10 @@ export default function HspDetailedOverview() {
       .then(([res, dash]) => {
         setPayload(res);
         setDashRows(dash?.rows || []);
-        if (res?.period_grain_options?.length) {
-          setMeta((m) => (m ? {
-            ...m,
-            period_grains: res.period_grains || m.period_grains,
-            period_grain_options: res.period_grain_options,
-            default_period_grain: res.default_period_grain || res.period_grain || m.default_period_grain || "monthly",
-            periods: res.periods || m.periods,
-          } : m));
-        }
         setLoading(false);
       })
       .catch((e) => { setError(errMsg(e)); setLoading(false); });
-  }, [api, f]);
+  }, [api, f, meta?.default_period_grain]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -169,7 +160,7 @@ export default function HspDetailedOverview() {
       </div>
 
       <FilterBar
-        meta={meta}
+        meta={{ ...meta, period_grain_options: undefined, period_grains: undefined }}
         f={f}
         set={setF}
         onReset={() => setF(initialFilters(meta))}

@@ -72,16 +72,17 @@ const FilterField = ({ label, value, onChange, options, testId, disabledOptions 
 export default function HspExecutiveOverview({ d: initial }) {
   const api = useApi();
   const seed = initial?.executive;
-  const [grain, setGrain] = useState(initial?.period_grain || "monthly");
+  const [grain, setGrain] = useState(initial?.period_grain || initial?.default_period_grain || "quarterly");
   const [base, setBase] = useState(seed?.base || initial?.base || "");
   const [latest, setLatest] = useState(seed?.latest || initial?.latest || "");
   const [payload, setPayload] = useState(initial?.executive ? {
     as_of: initial.as_of,
     executive: initial.executive,
     periods: initial.periods || [],
-    period_grain: initial.period_grain || "monthly",
+    period_grain: initial.period_grain || initial?.default_period_grain || "quarterly",
     period_grains: initial.period_grains || null,
     period_grain_options: initial.period_grain_options || null,
+    default_period_grain: initial.default_period_grain || null,
   } : null);
   const [loading, setLoading] = useState(!initial?.executive);
   const [error, setError] = useState(null);
@@ -93,6 +94,11 @@ export default function HspExecutiveOverview({ d: initial }) {
     api("get", "/hsp/executive", { params: { base, latest, grain } })
       .then((res) => {
         setPayload(res);
+        if (res.period_grain) setGrain(res.period_grain);
+        if (res.periods?.length) {
+          if (res.executive?.base) setBase(res.executive.base);
+          if (res.executive?.latest) setLatest(res.executive.latest);
+        }
         setLoading(false);
       })
       .catch((e) => {
@@ -123,6 +129,20 @@ export default function HspExecutiveOverview({ d: initial }) {
     () => (payload?.period_grain_options || []).map((o) => ({ value: o.id, label: o.label })),
     [payload],
   );
+  const grainLabel = useMemo(() => {
+    const fromOpt = grainOptions.find((o) => o.value === grain)?.label;
+    return fromOpt || payload?.period_grains?.[grain]?.label || "Period";
+  }, [grain, grainOptions, payload]);
+  const grainNoun = useMemo(() => {
+    const map = {
+      monthly: "month",
+      quarterly: "quarter",
+      half_yearly: "half-year",
+      yearly: "year",
+      ytd: "YTD period",
+    };
+    return map[grain] || "period";
+  }, [grain]);
   const latestDisabled = useMemo(() => periodsAtOrBefore(periods, base), [periods, base]);
   const onBaseChange = (v) => {
     setBase(v);
@@ -261,7 +281,7 @@ export default function HspExecutiveOverview({ d: initial }) {
         </motion.div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-          <Panel title="Accidents by quarter" subtitle="Statewide totals" testId="ov-hsp-chart-accidents">
+          <Panel title={`Accidents by ${grainNoun}`} subtitle={`Statewide totals · ${grainLabel}`} testId="ov-hsp-chart-accidents">
             <div className="h-56">
               <ResponsiveContainer>
                 <LineChart data={trend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
@@ -275,7 +295,7 @@ export default function HspExecutiveOverview({ d: initial }) {
             </div>
           </Panel>
 
-          <Panel title="Fatalities and people injured by quarter" subtitle="Statewide totals" testId="ov-hsp-chart-outcomes">
+          <Panel title={`Fatalities and people injured by ${grainNoun}`} subtitle={`Statewide totals · ${grainLabel}`} testId="ov-hsp-chart-outcomes">
             <div className="h-56">
               <ResponsiveContainer>
                 <LineChart data={trend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
@@ -291,7 +311,7 @@ export default function HspExecutiveOverview({ d: initial }) {
             </div>
           </Panel>
 
-          <Panel title="Units with most fatalities in the latest quarter" subtitle="Top 5 by fatality count" testId="ov-hsp-chart-top-fatal">
+          <Panel title={`Units with most fatalities in the latest ${grainNoun}`} subtitle="Top 5 by fatality count" testId="ov-hsp-chart-top-fatal">
             <div className="h-72">
               <ResponsiveContainer>
                 <BarChart data={topFatal} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
@@ -303,7 +323,7 @@ export default function HspExecutiveOverview({ d: initial }) {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <p className="text-[11px] text-slate-500 mt-2">Units are ordered by the latest-quarter fatality count.</p>
+            <p className="text-[11px] text-slate-500 mt-2">Units are ordered by the latest-{grainNoun} fatality count.</p>
           </Panel>
 
           <Panel title="Largest fatality reductions and increases" subtitle="Positive = fewer fatalities than base" testId="ov-hsp-chart-movers">
@@ -323,10 +343,10 @@ export default function HspExecutiveOverview({ d: initial }) {
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <p className="text-[11px] text-slate-500 mt-2">Positive values indicate fewer fatalities than in the base quarter.</p>
+            <p className="text-[11px] text-slate-500 mt-2">Positive values indicate fewer fatalities than in the base {grainNoun}.</p>
           </Panel>
 
-          <Panel title="Fatalities per 100 accidents by quarter" subtitle="Severity ratio" testId="ov-hsp-chart-severity">
+          <Panel title={`Fatalities per 100 accidents by ${grainNoun}`} subtitle={`Severity ratio · ${grainLabel}`} testId="ov-hsp-chart-severity">
             <div className="h-56">
               <ResponsiveContainer>
                 <LineChart data={trend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>

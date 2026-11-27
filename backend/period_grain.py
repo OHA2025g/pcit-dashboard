@@ -16,6 +16,20 @@ GRAIN_LABELS = {
 }
 
 _Q_LABEL = {1: "Jan-Mar", 2: "Apr-Jun", 3: "Jul-Sep", 4: "Oct-Dec"}
+_Q_ORD = {"Jan-Mar": 1, "Apr-Jun": 2, "Jul-Sep": 3, "Oct-Dec": 4}
+_Q_TO_HALF = {
+    "Jan-Mar": "Jan-Jun",
+    "Apr-Jun": "Jan-Jun",
+    "Jul-Sep": "Jul-Dec",
+    "Oct-Dec": "Jul-Dec",
+}
+
+# Grains available depending on how HSP periods were uploaded
+HSP_GRAINS_BY_SOURCE = {
+    "monthly": GRAINS,
+    "quarterly": ("quarterly", "half_yearly", "yearly"),
+    "other": ("quarterly",),
+}
 
 
 def parse_month_period(period: str):
@@ -24,6 +38,42 @@ def parse_month_period(period: str):
     if len(parts) == 2 and parts[0] in MONTH_ORD and parts[1].isdigit():
         return int(parts[1]), MONTH_ORD[parts[0]]
     return None
+
+
+def parse_quarter_period(period: str):
+    """Parse 'Apr-Jun 2026' → (year, quarter_ord, quarter_label) or None."""
+    parts = str(period or "").split()
+    if len(parts) == 2 and parts[0] in _Q_ORD and parts[1].isdigit():
+        return int(parts[1]), _Q_ORD[parts[0]], parts[0]
+    return None
+
+
+def hsp_source_kind(periods: list) -> str:
+    """Detect whether HSP periods are monthly Master rows or Quaterly sheet labels."""
+    plist = periods or []
+    if any(parse_month_period(p) for p in plist):
+        return "monthly"
+    if any(parse_quarter_period(p) for p in plist):
+        return "quarterly"
+    return "other"
+
+
+def hsp_default_grain(source: str) -> str:
+    return "monthly" if source == "monthly" else "quarterly"
+
+
+def hsp_allowed_grains(source: str) -> tuple:
+    return HSP_GRAINS_BY_SOURCE.get(source) or HSP_GRAINS_BY_SOURCE["other"]
+
+
+def hsp_grain_options(source: str) -> list:
+    return [{"id": g, "label": GRAIN_LABELS[g]} for g in hsp_allowed_grains(source)]
+
+
+def clamp_hsp_grain(grain: str | None, source: str) -> str:
+    g = normalize_grain(grain)
+    allowed = hsp_allowed_grains(source)
+    return g if g in allowed else hsp_default_grain(source)
 
 
 def normalize_grain(grain: str | None) -> str:
@@ -206,6 +256,112 @@ def grain_meta_payload(monthly_periods: list) -> dict:
             "default_latest": l,
         }
     return out
+
+
+def list_quarter_grain_periods(quarter_periods: list, grain: str) -> list:
+    """Ordered period labels when source data is quarterly (Jan-Mar YYYY)."""
+    grain = normalize_grain(grain)
+    parsed = []
+    for p in quarter_periods or []:
+        q = parse_quarter_period(p)
+        if q:
+            parsed.append(q)
+    if not parsed:
+        return list(quarter_periods or [])
+    parsed = sorted({(y, qo, ql) for y, qo, ql in parsed}, key=lambda x: (x[0], x[1]))
+    if grain == "quarterly":
+        return [f"{ql} {y}" for y, qo, ql in parsed]
+    if grain == "half_yearly":
+        labels = {}
+        for y, _qo, ql in parsed:
+            half = _Q_TO_HALF[ql]
+            labels[(y, 1 if half == "Jan-Jun" else 2)] = f"{half} {y}"
+        return [labels[k] for k in sorted(labels.keys())]
+    if grain == "yearly":
+        return [str(y) for y in sorted({y for y, _, _ in parsed})]
+    return [f"{ql} {y}" for y, qo, ql in parsed]
+
+
+def grain_meta_payload_hsp(periods: list) -> dict:
+    """period_grains block for HSP — monthly Master or Quaterly source."""
+    source = hsp_source_kind(periods)
+    if source == "monthly":
+        return grain_meta_payload(periods)
+    out = {}
+    for g in hsp_allowed_grains(source):
+        plist = list_quarter_grain_periods(periods, g) if source == "quarterly" else list(periods or [])
+        b, l = default_grain_window(plist)
+        out[g] = {
+            "label": GRAIN_LABELS[g],
+            "periods": plist,
+            "default_base": b,
+            "default_latest": l,
+        }
+    return out
+
+
+def aggregate_hsp_quarter_facts(facts: dict, grain: str):
+    """Aggregate Quaterly-sheet {(unit, period): fact} into half-yearly / yearly views."""
+    grain = normalize_grain(grain)
+    periods = list_quarter_grain_periods([p for (_, p) in facts.keys()], grain)
+    if grain == "quarterly":
+        out = {}
+        for (unit, period), fact in facts.items():
+            if parse_quarter_period(period):
+                out[(unit, period)] = {
+                    **fact,
+                    "period": period,
+                    "den": fact.get("accidents") if fact.get("accidents") is not None else fact.get("den"),
+                    "num": fact.get("killed") if fact.get("killed") is not None else fact.get("num"),
+                    "beyond": fact.get("injured") if fact.get("injured") is not None else fact.get("beyond"),
+                }
+        return out, periods
+
+    by_unit = {}
+    meta = {}
+    for (unit, period), fact in facts.items():
+        q = parse_quarter_period(period)
+        if not q:
+            continue
+        y, qo, ql = q
+        by_unit.setdefault(unit, []).append((y, qo, ql, fact))
+        meta.setdefault(unit, {
+            "unit": unit,
+            "range": fact.get("range") or "",
+            "type": fact.get("type") or "All",
+        })
+
+    out = {}
+    for unit, items in by_unit.items():
+        buckets = {}
+        for y, _qo, ql, fact in items:
+            if grain == "half_yearly":
+                label = f"{_Q_TO_HALF[ql]} {y}"
+            elif grain == "yearly":
+                label = str(y)
+            else:
+                label = f"{ql} {y}"
+            buckets.setdefault(label, []).append(fact)
+        for label, window in buckets.items():
+            merged = _merge_hsp_month_facts(window)
+            out[(unit, label)] = {**meta[unit], "period": label, **merged}
+    return out, periods
+
+
+def resolve_hsp_facts(facts: dict, source_periods: list, grain: str):
+    """
+    Apply the requested period view to HSP facts.
+    Returns (facts, periods, grain_norm, source_kind).
+    """
+    source = hsp_source_kind(source_periods)
+    grain_norm = clamp_hsp_grain(grain, source)
+    if source == "monthly":
+        agg, periods = aggregate_hsp_facts(facts, grain_norm)
+        return agg, periods, grain_norm, source
+    if source == "quarterly":
+        agg, periods = aggregate_hsp_quarter_facts(facts, grain_norm)
+        return agg, periods, grain_norm, source
+    return facts, list(source_periods or []), grain_norm, source
 
 
 def _merge_hsp_month_facts(items: list) -> dict:

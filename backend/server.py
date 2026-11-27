@@ -39,7 +39,8 @@ try:
     from backend.reports import build_section, render_pdf, render_email, render_explain_email
     from backend.period_grain import (
         GRAINS, GRAIN_LABELS, normalize_grain, aggregate_112_facts, aggregate_hsp_facts,
-        grain_meta_payload, parse_month_period,
+        grain_meta_payload, grain_meta_payload_hsp, parse_month_period, resolve_hsp_facts,
+        hsp_source_kind, hsp_default_grain, hsp_grain_options,
     )
 except ModuleNotFoundError:
     from auth import auth_router, bind_auth, bootstrap_admin, require_user
@@ -54,7 +55,8 @@ except ModuleNotFoundError:
     from workbook import parse_workbook, WorkbookError, _normalize_range
     from period_grain import (
         GRAINS, GRAIN_LABELS, normalize_grain, aggregate_112_facts, aggregate_hsp_facts,
-        grain_meta_payload, parse_month_period,
+        grain_meta_payload, grain_meta_payload_hsp, parse_month_period, resolve_hsp_facts,
+        hsp_source_kind, hsp_default_grain, hsp_grain_options,
     )
 
 mongo_url = os.environ['MONGO_URL']
@@ -296,15 +298,10 @@ async def compute(domain, type_, base, latest, member, grain: str = "monthly"):
         agg_facts, periods = aggregate_112_facts(entry["facts"], grain_norm)
         data = {**data, type_: {"facts": agg_facts, "units": entry["units"]}}
     elif domain == "hsp":
-        grain_norm = normalize_grain(grain)
         entry = data[type_]
         monthly_facts = entry["facts"]
-        # Only grain-aggregate when stored periods are monthly (Mon YYYY)
-        if any(parse_month_period(p) for p in periods):
-            agg_facts, periods = aggregate_hsp_facts(entry["facts"], grain_norm)
-            data = {**data, type_: {"facts": agg_facts, "units": entry["units"]}}
-        else:
-            grain_norm = "monthly"
+        agg_facts, periods, grain_norm, _src = resolve_hsp_facts(entry["facts"], periods, grain)
+        data = {**data, type_: {"facts": agg_facts, "units": entry["units"]}}
 
     if base not in periods or latest not in periods:
         raise HTTPException(status_code=400, detail="Unknown period")
@@ -361,17 +358,28 @@ async def meta(domain: str, member: dict = Depends(viewer)):
         "default_base": b, "default_latest": l, "scope_range": rng,
         "dataset": {k: ds[k] for k in ("id", "filename", "source", "uploaded_at", "uploaded_by", "record_count", "unit_count")},
     }
-    if domain in ("emergency112", "hsp"):
+    if domain == "emergency112":
         grains = grain_meta_payload(ds["periods"])
         payload["period_grains"] = grains
         payload["period_grain_options"] = [{"id": g, "label": GRAIN_LABELS[g]} for g in GRAINS]
         payload["default_period_grain"] = "monthly"
-        # Prefer monthly grain defaults when Master-sheet months are present
         monthly = grains.get("monthly") or {}
         if monthly.get("periods") and any(parse_month_period(p) for p in (ds.get("periods") or [])):
             payload["periods"] = monthly["periods"]
             payload["default_base"] = monthly.get("default_base") or b
             payload["default_latest"] = monthly.get("default_latest") or l
+    elif domain == "hsp":
+        source = hsp_source_kind(ds.get("periods") or [])
+        grains = grain_meta_payload_hsp(ds["periods"])
+        default_grain = hsp_default_grain(source)
+        payload["period_grains"] = grains
+        payload["period_grain_options"] = hsp_grain_options(source)
+        payload["default_period_grain"] = default_grain
+        grain_block = grains.get(default_grain) or {}
+        if grain_block.get("periods"):
+            payload["periods"] = grain_block["periods"]
+            payload["default_base"] = grain_block.get("default_base") or b
+            payload["default_latest"] = grain_block.get("default_latest") or l
     return payload
 
 
@@ -711,17 +719,15 @@ async def hsp_executive_view(
     type_ = ds["types"][-1]
     data = await load_facts(ds)
     entry = data.get(type_) or data.get("All") or {"facts": {}, "units": []}
-    grain_norm = normalize_grain(grain)
-    monthly_source = any(parse_month_period(p) for p in (ds.get("periods") or []))
-    if monthly_source:
-        facts_hsp, periods_hsp = aggregate_hsp_facts(entry["facts"], grain_norm)
-        data_view = {type_: {"facts": facts_hsp, "units": entry["units"]}}
-    else:
-        facts_hsp, periods_hsp = entry["facts"], list(ds["periods"])
-        data_view = data
-        grain_norm = "monthly"
+    source = hsp_source_kind(ds.get("periods") or [])
+    facts_hsp, periods_hsp, grain_norm, _src = resolve_hsp_facts(entry["facts"], ds.get("periods") or [], grain)
+    data_view = {type_: {"facts": facts_hsp, "units": entry["units"]}}
     b = base or (periods_hsp[-2] if len(periods_hsp) >= 2 else (periods_hsp[0] if periods_hsp else default_base))
     l = latest or (periods_hsp[-1] if periods_hsp else default_latest)
+    if b not in periods_hsp or l not in periods_hsp:
+        # Client still holding an old grain window — fall back to defaults for this grain
+        b = periods_hsp[-2] if len(periods_hsp) >= 2 else (periods_hsp[0] if periods_hsp else default_base)
+        l = periods_hsp[-1] if periods_hsp else default_latest
     if b not in periods_hsp or l not in periods_hsp:
         raise HTTPException(status_code=400, detail="Unknown period")
     _, _, rows, _, rng = await compute("hsp", type_, b, l, member, grain=grain_norm)
@@ -731,8 +737,9 @@ async def hsp_executive_view(
         "types": ds["types"],
         "periods": periods_hsp,
         "period_grain": grain_norm,
-        "period_grains": grain_meta_payload(ds["periods"]),
-        "period_grain_options": [{"id": g, "label": GRAIN_LABELS[g]} for g in GRAINS],
+        "period_grains": grain_meta_payload_hsp(ds["periods"]),
+        "period_grain_options": hsp_grain_options(source),
+        "default_period_grain": hsp_default_grain(source),
         "executive": hsp_executive(data_view, rows, periods_hsp, b, l, type_),
     }
     return out
@@ -755,16 +762,14 @@ async def hsp_detailed_view(
     data = await load_facts(ds)
     policy = await get_policy()
     entry = data.get(type_) or data.get("All") or {"facts": {}, "units": []}
-    grain_norm = normalize_grain(grain)
-    if any(parse_month_period(p) for p in (ds.get("periods") or [])):
-        facts_hsp, periods_hsp = aggregate_hsp_facts(entry["facts"], grain_norm)
-        data_view = {type_: {"facts": facts_hsp, "units": entry["units"]}}
-    else:
-        facts_hsp, periods_hsp = entry["facts"], list(ds["periods"])
-        data_view = data
-        grain_norm = "monthly"
+    source = hsp_source_kind(ds.get("periods") or [])
+    facts_hsp, periods_hsp, grain_norm, _src = resolve_hsp_facts(entry["facts"], ds.get("periods") or [], grain)
+    data_view = {type_: {"facts": facts_hsp, "units": entry["units"]}}
     b = base or (periods_hsp[-2] if len(periods_hsp) >= 2 else (periods_hsp[0] if periods_hsp else default_base))
     l = latest or (periods_hsp[-1] if periods_hsp else default_latest)
+    if b not in periods_hsp or l not in periods_hsp:
+        b = periods_hsp[-2] if len(periods_hsp) >= 2 else (periods_hsp[0] if periods_hsp else default_base)
+        l = periods_hsp[-1] if periods_hsp else default_latest
     if b not in periods_hsp or l not in periods_hsp:
         raise HTTPException(status_code=400, detail="Unknown period")
     unit_names = sorted({u for u, _ in entry.get("units") or []})
@@ -783,9 +788,9 @@ async def hsp_detailed_view(
         "types": ds["types"],
         "periods": periods_hsp,
         "period_grain": grain_norm,
-        "period_grains": grain_meta_payload(ds["periods"]),
-        "period_grain_options": [{"id": g, "label": GRAIN_LABELS[g]} for g in GRAINS],
-        "default_period_grain": "monthly" if any(parse_month_period(p) for p in (ds.get("periods") or [])) else grain_norm,
+        "period_grains": grain_meta_payload_hsp(ds["periods"]),
+        "period_grain_options": hsp_grain_options(source),
+        "default_period_grain": hsp_default_grain(source),
         "detailed": detailed,
     }
     return out
@@ -841,27 +846,27 @@ async def overview(member: dict = Depends(viewer)):
         elif domain == "hsp":
             data = await load_facts(ds)
             entry = data.get(type_) or data.get("All") or {"facts": {}, "units": []}
-            if any(parse_month_period(p) for p in (ds.get("periods") or [])):
-                facts_hsp, periods_hsp = aggregate_hsp_facts(entry["facts"], "monthly")
-                data_view = {type_: {"facts": facts_hsp, "units": entry["units"]}}
-                # Align overview window to monthly defaults when dataset is monthly
-                if periods_hsp:
-                    b = periods_hsp[-2] if len(periods_hsp) >= 2 else periods_hsp[0]
-                    l = periods_hsp[-1]
-                    payload["base"], payload["latest"] = b, l
-                    _, _, rows, _, _ = await compute(domain, type_, b, l, member, grain="monthly")
-                    payload["totals"] = totals(domain, rows)
-                    scored = sorted([r for r in rows if r["rank"]], key=lambda r: r["rank"])
-                    payload["top"], payload["bottom"] = scored[:5], scored[-5:][::-1]
-            else:
-                facts_hsp, periods_hsp = entry["facts"], list(ds["periods"])
-                data_view = data
+            source = hsp_source_kind(ds.get("periods") or [])
+            default_grain = hsp_default_grain(source)
+            facts_hsp, periods_hsp, grain_norm, _src = resolve_hsp_facts(
+                entry["facts"], ds.get("periods") or [], default_grain,
+            )
+            data_view = {type_: {"facts": facts_hsp, "units": entry["units"]}}
+            if periods_hsp:
+                b = periods_hsp[-2] if len(periods_hsp) >= 2 else periods_hsp[0]
+                l = periods_hsp[-1]
+                payload["base"], payload["latest"] = b, l
+                _, _, rows, _, _ = await compute(domain, type_, b, l, member, grain=grain_norm)
+                payload["totals"] = totals(domain, rows)
+                scored = sorted([r for r in rows if r["rank"]], key=lambda r: r["rank"])
+                payload["top"], payload["bottom"] = scored[:5], scored[-5:][::-1]
             payload["executive"] = hsp_executive(data_view, rows, periods_hsp, b, l, type_)
             payload["types"] = ds["types"]
             payload["periods"] = periods_hsp
-            payload["period_grain"] = "monthly"
-            payload["period_grains"] = grain_meta_payload(ds["periods"])
-            payload["period_grain_options"] = [{"id": g, "label": GRAIN_LABELS[g]} for g in GRAINS]
+            payload["period_grain"] = grain_norm
+            payload["period_grains"] = grain_meta_payload_hsp(ds["periods"])
+            payload["period_grain_options"] = hsp_grain_options(source)
+            payload["default_period_grain"] = default_grain
         out[domain] = payload
     return out
 
@@ -1612,7 +1617,7 @@ async def seed_datasets():
         ("conviction", "conviction.xlsm", "conviction_Final Dashboard_v3.xlsm"),
         ("timeliness", "timeliness.xlsm", "timeliness_Final Dashboard_v3.xlsm"),
         ("emergency112", "emergency112.xlsm", "Dashboard 112_V2.xlsm"),
-        ("hsp", "hsp.xlsm", "Consilidated HSP Data_v3.xlsm"),
+        ("hsp", "hsp.xlsm", "HSP_Executive_and_Detailed_Dashboards.xlsm"),
         ("training", "training.xlsm", "Training Data v2.xlsm"),
         ("antf", "antf.xlsx", "ANTF Meetings Conducted Dashboard.xlsx"),
     )
